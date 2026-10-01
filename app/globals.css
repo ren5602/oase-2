@@ -1,0 +1,907 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   OASE — DESIGN SYSTEM
+
+   Every token below is EXTRACTED FROM THE REFERENCE BUILD, not invented. The
+   source is the Framer export at altruistic-pitch-532973.framer.app, whose
+   stylesheet and DOM were read directly. Where a value is a deliberate
+   departure it says so in a comment.
+
+   ---------------------------------------------------------------------------
+   DESKTOP ONLY
+
+   The reference ships `<meta name="viewport" content="width=1440">` and a
+   fixed 1440 x 11286px canvas with ZERO media queries. There is no responsive
+   design to port.
+
+   This build targets desktop only. There are no mobile or tablet breakpoints.
+   `clamp()` and `vw` are used only so the desktop layout interpolates cleanly
+   across 1280 / 1440 / 1600 / 1920. Primary comparison viewport: 1440 x 900.
+
+   ---------------------------------------------------------------------------
+   CASCADE LAYERS — READ BEFORE ADDING A RULE
+
+   Tailwind v4 emits its rules inside `@layer`. Any rule written OUTSIDE a
+   layer beats every layered rule, regardless of source order or specificity.
+
+   That means an unlayered custom class silently defeats Tailwind utilities on
+   the same element. So:
+
+     base resets        -> @layer base
+     reusable classes   -> @layer components
+
+   Utilities then always win, which is the expected mental model. Every
+   reusable class in this file lives in a layer on purpose.
+   ========================================================================= */
+
+@theme {
+  /* ---------------------------------------------------------------- surface
+     Reference page background is #fff, but the hero sits on #76453b and the
+     brand reads warm, so cream is the page surface. #fefefc is the reference's
+     own rgb(254,255,252) — used for hero type and sticky captions. */
+  --color-cream: #fefefc;
+  --color-cream-deep: #f5f1e8;
+  --color-surface: #ece5d8;
+
+  /* ------------------------------------------------------------------- ink
+     #0b0b0b is the reference foreground. Headings render at 70% of it, which
+     is where --color-muted comes from (the reference uses
+     rgba(11,11,11,0.7) rather than a distinct hue). */
+  --color-ink: #0b0b0b;
+  --color-muted: #8a7f74;
+
+  /* ------------------------------------------------------------- coffee set
+     #76453b is the reference hero background.
+     #59342c is the reference card-description colour.
+     #2a1712 is a deeper tone for dark sections.
+     #e39f01 is the reference hero accent, rgb(227,159,1) verbatim. */
+  --color-coffee: #76453b;
+  --color-coffee-deep: #59342c;
+  --color-coffee-dark: #2a1712;
+  --color-amber: #e39f01;
+
+  /* -------------------------------------------------------------- typefaces
+     The reference sets ALL display type in Plus Jakarta Sans 700 — not a
+     serif. Its own @font-face blocks load weights 600 and 700 only.
+
+     Fraunces is named in the reference's card-title CSS but never actually
+     loaded, so it falls back to a generic serif there. We load it properly so
+     the intent is honoured, and confine it to small accents. */
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  /* ------------------------------------------------------------ type scale
+     The reference sets its hero at a FIXED 132px at every width — measured
+     identical at 1280, 1440, 1600 and 1920. It is not fluid, and making it
+     fluid breaks the composition: the cup is a fixed 1796px, so the type has
+     to hold its size for the two to stay in the same relationship.
+
+     Section headings are a fixed 64px in the reference, held the same way. */
+  --text-hero: 132px;
+  --text-section: 64px;
+  --text-body: clamp(0.9375rem, 1.05vw, 1.0625rem);
+  --text-label: 0.6875rem;
+
+  /* --------------------------------------------------------------- motion
+     A single strong ease-out, used for every entrance and hover. */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ---------------------------------------------------------------- layout
+     Gutter scales across the desktop range only. */
+  --spacing-gutter: clamp(1.5rem, 5vw, 5rem);
+  --spacing-section: clamp(5rem, 12vh, 11rem);
+}
+
+/* ============================================================================
+   BASE
+   ========================================================================= */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Anchor targets must not hide under the fixed nav. */
+    scroll-padding-top: 6rem;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.55;
+    font-weight: 500;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* `clip` rather than `hidden`: it contains intentionally-overflowing
+       display type without creating a scroll container, which would break
+       `position: sticky` inside. */
+    overflow-x: clip;
+  }
+
+  :target {
+    scroll-margin-top: 6rem;
+  }
+
+  ::selection {
+    background-color: var(--color-coffee);
+    color: var(--color-cream);
+  }
+
+  /* Visible focus that adapts to whatever colour it lands on. */
+  :focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Skip link — visible only on focus. */
+  .skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 200;
+    transform: translateY(-200%);
+    background-color: var(--color-ink);
+    color: var(--color-cream);
+    padding: 0.75rem 1.25rem;
+    border-radius: 999px;
+    font-size: var(--text-label);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    transition: transform 0.2s var(--ease-out-soft);
+  }
+
+  .skip-link:focus-visible {
+    transform: translateY(0);
+  }
+}
+
+/* ============================================================================
+   COMPONENTS
+   Reusable classes. Because these live in the `components` layer, any Tailwind
+   utility on the same element overrides them — which is what makes
+   `tracking-*`, `leading-*` and `mt-*` behave as expected.
+   ========================================================================= */
+
+@layer components {
+  /* ---------------------------------------------------------- typography */
+
+  /* The reference's display voice: Plus Jakarta Sans 700, line-height 1,
+     letter-spacing 0 (it resolves to `0` everywhere), uppercase typed
+     literally rather than applied via `text-transform`. */
+  .display {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    margin: 0;
+  }
+
+  /* Editorial accent face. Small use only. */
+  .serif {
+    font-family: var(--font-serif);
+    font-optical-sizing: auto;
+  }
+
+  .label {
+    font-size: var(--text-label);
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+
+  /* ---------------------------------------------------------------- layout */
+
+  .shell {
+    width: 100%;
+    max-width: 96rem;
+    margin-inline: auto;
+    padding-inline: var(--spacing-gutter);
+  }
+
+  /* --------------------------------------------------------------- hero word
+     Each hero word is a clipped box holding TWO stacked copies of the same
+     text. At rest the cream copy sits in the window; on hover the gold copy
+     swaps in. The reference does this by flipping flex `order`, which is what
+     `translateY` reproduces here.
+
+     Height is `1.2em`, matching the reference's 158px box at 132px type, and
+     is expressed in `em` so it tracks the font-size without a magic number.
+
+     The reference transitions both copies; that reads as a smear because the
+     two move in lockstep through the same window. Only the stack moves here. */
+  .hero-word {
+    position: relative;
+    display: block;
+    height: 1.2em;
+    overflow: hidden;
+  }
+
+  .hero-word__stack {
+    display: flex;
+    flex-direction: column;
+    will-change: transform;
+    transition: transform 550ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .hero-word:hover .hero-word__stack {
+      transform: translateY(-1.2em);
+    }
+  }
+
+  /* Keyboard parity: the wordmark inside the word is focusable, so focusing it
+     must reveal the same state hover does. Declared outside the hover query so
+     it applies on every device. */
+  .hero-word:focus-within .hero-word__stack {
+    transform: translateY(-1.2em);
+  }
+
+  .hero-word__line {
+    display: block;
+    height: 1.2em;
+    white-space: pre;
+  }
+
+  /* At rest. */
+  .hero-word__line--front {
+    color: var(--color-cream);
+  }
+
+  /* Revealed on hover. */
+  .hero-word__line--back {
+    color: var(--color-amber);
+  }
+
+  /* Per-character reveal target. `will-change` is set narrowly and released
+     when GSAP clears the props. */
+  [data-char] {
+    display: inline-block;
+    white-space: pre;
+    will-change: transform, opacity, filter;
+  }
+
+  [data-word] {
+    display: inline-block;
+    white-space: pre;
+  }
+
+  /* -------------------------------------------------------------- scroll cue */
+
+  .cue {
+    transition: transform 300ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .cue:hover {
+      transform: scale(1.1);
+    }
+  }
+
+  .cue__arrow {
+    animation: cue-bob 2.4s var(--ease-in-out-soft) infinite;
+  }
+
+  /* ----------------------------------------------------------- section theme
+     Drives the nav inversion. Any section declares its own theme and the nav
+     follows, so no colour is hardcoded in the nav itself. */
+  [data-theme="light"] {
+    --section-fg: var(--color-ink);
+    --section-bg: var(--color-cream);
+  }
+
+  [data-theme="dark"] {
+    --section-fg: var(--color-cream);
+    --section-bg: var(--color-coffee);
+  }
+
+  [data-theme="ink"] {
+    --section-fg: var(--color-cream);
+    --section-bg: var(--color-coffee-dark);
+  }
+
+  .themed {
+    color: var(--section-fg, var(--color-ink));
+  }
+
+  /* ---------------------------------------------------------- interaction
+     Hover states are gated behind `hover: hover` + `pointer: fine`. On touch
+     devices a tap fires hover and the state sticks, which reads as a bug.
+
+     Declared here rather than composed from Tailwind variants because
+     nesting a `motion-safe` variant around an arbitrary media variant is
+     fragile, and these three states must stay in sync with each other. */
+
+  .press {
+    transition: transform 300ms var(--ease-out-soft);
+  }
+
+  .press:active {
+    transform: scale(0.97);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .press:hover {
+      transform: scale(1.04);
+    }
+  }
+
+  /* Slide-and-recolour for overlay links. */
+  .link-slide {
+    transition:
+      transform 500ms var(--ease-out-soft),
+      color 500ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .link-slide:hover {
+      transform: translateX(1rem);
+      color: var(--color-amber);
+    }
+  }
+
+  .link-slide:focus-visible {
+    transform: translateX(1rem);
+    color: var(--color-amber);
+  }
+
+  /* Quiet opacity dip for the wordmark. A scale transform on a small text link
+     reads as a wobble; a colour/opacity shift is the right weight for it. */
+  .quiet-hover {
+    transition:
+      opacity 300ms var(--ease-out-soft),
+      color 500ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .quiet-hover:hover {
+      opacity: 0.7;
+    }
+  }
+
+  /* -------------------------------------------------------------- signature
+     The pinned panel stage.
+
+     `position: sticky` rather than GSAP's `pin`, because that is what the
+     reference uses. It needs no pin-spacer wrapper and never mutates the
+     document, so ScrollTrigger only has to *read* scroll position. That also
+     means `overflow-x: clip` on `body` is safe here — `clip` does not create a
+     scroll container, so sticky still works. `hidden` would have broken it.
+
+     The track height is the reference's own: five viewport-heights of scroll
+     plus four 300px gaps, expressed as `600vh + 1200px` (container height)
+     which leaves `500vh + 1200px` of pinned travel. */
+
+  .sig-track {
+    position: relative;
+    height: calc(600vh + 1200px);
+  }
+
+  .sig-sticky {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Fixed 1200x800, centred by a single-cell grid rather than by margins or a
+     transform. Margins would be clobbered by any `m-*` utility on the same
+     element (Tailwind's utilities beat the components layer by design), and a
+     `translate(-50%,-50%)` would put a second writer on `transform`, which
+     GSAP already owns here. The grid sidesteps both. */
+  .sig-stage {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    width: 100%;
+  }
+
+  .sig-panel {
+    grid-area: 1 / 1;
+    width: 1200px;
+    height: 800px;
+    overflow: hidden;
+    will-change: transform;
+  }
+
+  .sig-panel__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* Caption bar. Height is intrinsic — 24px padding above and below a 76.8px
+     line box gives the reference's 124.8px without a magic number. */
+  .sig-caption {
+    position: absolute;
+    inset: auto 0 0 0;
+    display: flex;
+    align-items: flex-end;
+    padding: 24px;
+    background-color: rgb(11 11 11 / 0.5);
+  }
+
+  .sig-caption__title {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-cream);
+    margin: 0;
+  }
+
+  /* ------------------------------------------------------------------ menu
+     The fan carousel.
+
+     Geometry is the reference's, measured in a live browser. Five cards are
+     visible at rest, laid out symmetrically around the active one; a sixth
+     sits fully hidden behind the centre, waiting to be dealt in.
+
+     Card slot -> (scale, rotation, translate). The active card is scale 1 at
+     the origin; the fan opens out to +/-21 degrees and 480px at the edges.
+
+     The wrapper is 200x370 with a 200x300 image, so the label hangs below the
+     photograph rather than inside it.
+
+     ---------------------------------------------------------------------------
+     VIEWPORT-FIT SCALING — `--u`
+
+     The deck is the one part of this section that cannot be fluid by default:
+     the reference's card is a fixed 200x370 and the whole fan is built on
+     those numbers. But a fixed 476px deck needs 855px of vertical space once
+     the heading, tabs, controls and padding are counted — so on any viewport
+     shorter than ~830px (a 1920 window with browser chrome is about 780px)
+     the section grew past the fold and the heading was pushed off the top.
+
+     `--u` is a UNIT LENGTH that equals 1px when there is room and shrinks
+     below that. Every dimension in the fan is expressed as a multiple of it,
+     so one value scales the entire composition coherently — the arc, the
+     rotations and the overlaps all stay exactly as measured, and above the
+     threshold nothing changes at all.
+
+     A unit length rather than `transform: scale()` on the deck, because a
+     transform would leave the deck's layout box at its full 476px and the
+     section would still overflow. Expressing the sizes in `--u` shrinks the
+     box itself.
+
+     379px is everything that is NOT the fan:
+       64 pad-top + 64 heading + 28 + 35 tabs + 40 + 40 + 44 controls + 64 pad-bottom
+
+     The floor of 0.55px keeps the fan legible on very short viewports; below
+     ~640px tall the section will scroll rather than shrink further, which is
+     the right trade. */
+
+  .fan {
+    --u: clamp(0.55px, calc((100svh - 379px) / 476), 1px);
+
+    position: relative;
+    width: calc(400 * var(--u));
+    height: calc(476 * var(--u));
+    flex: none;
+    /* NO overflow containment: the fan is far wider than its box (outer cards
+       at +/-480px, parked at +/-640px), so clipping here would cut the
+       outermost cards in half. The reference leaves its deck `overflow:
+       visible` for the same reason, and `#menu` carries the horizontal clip. */
+  }
+
+  .fan-card {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(200 * var(--u));
+    height: calc(370 * var(--u));
+    /* Negative half-margins rather than a translate, so the element's
+       `transform` belongs entirely to the animation. */
+    margin-top: calc(-185 * var(--u));
+    margin-left: calc(-100 * var(--u));
+    cursor: pointer;
+    backface-visibility: hidden;
+    transform-origin: center center;
+    will-change: transform, opacity;
+    /* A <button> centres its content vertically, and that is what caused the
+       photograph to overlap the label.
+
+       The label is `position: absolute`, so it is out of flow — leaving the
+       300px frame as the ONLY in-flow child of the 370px card. Chrome then
+       centres it: (370 - 300) / 2 = 35px. The frame sat at y=35, the label at
+       y=308, and the two overlapped by 27px.
+
+       `display: flex` + `justify-content: flex-start` pins the frame to the
+       top instead. Flex is used rather than `display: block` because block on
+       a <button> still leaves Chrome's internal centering in place — the
+       computed `line-height: 0px` proved the strut theory wrong. */
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 0;
+    border: 0;
+    background: none;
+    text-align: inherit;
+    color: inherit;
+    line-height: 0;
+    font-size: 0;
+    /* Matches the reference's measured 367ms motion, rounded to 380ms. The
+       reference writes `transition: all`, which also animates layout
+       properties; naming them is both faster and safer. */
+    transition:
+      transform 380ms var(--ease-out-soft),
+      opacity 380ms var(--ease-out-soft);
+  }
+
+  .fan-card__frame {
+    /* `display: block` is load-bearing. This is a <span> inside a <button>, and
+       a span is inline by default — inline elements ignore width/height, so
+       the frame collapsed to 0x0 and the photograph never rendered. */
+    display: block;
+    position: relative;
+    width: calc(200 * var(--u));
+    height: calc(300 * var(--u));
+    overflow: hidden;
+    border-radius: calc(12 * var(--u));
+    background-color: #fff;
+    isolation: isolate;
+    box-shadow: 0 calc(8 * var(--u)) calc(24 * var(--u)) rgb(0 0 0 / 0.15);
+  }
+
+  .fan-card__img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* Label sits below the frame, revealed only on the active card. */
+  .fan-card__label {
+    position: absolute;
+    top: calc(308 * var(--u));
+    left: 0;
+    width: 100%;
+    padding: calc(4 * var(--u)) calc(8 * var(--u));
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 300ms var(--ease-out-soft);
+  }
+
+  .fan-card__price {
+    font-size: calc(32 * var(--u));
+    line-height: 1.05;
+    font-weight: 600;
+    opacity: 0.7;
+    color: var(--color-ink);
+    margin-bottom: calc(4 * var(--u));
+    white-space: nowrap;
+  }
+
+  .fan-card__name {
+    font-family: var(--font-serif);
+    font-size: calc(14 * var(--u));
+    line-height: 1.2;
+    font-weight: 600;
+    opacity: 0.7;
+    color: var(--color-ink);
+    margin-bottom: calc(3 * var(--u));
+    white-space: nowrap;
+  }
+
+  .fan-card__desc {
+    font-size: calc(12 * var(--u));
+    line-height: 1.3;
+    font-weight: 400;
+    opacity: 0.7;
+    color: var(--color-coffee-deep);
+    white-space: nowrap;
+  }
+
+  /* ---------------------------------------------------------- fan controls */
+
+  /* Controls sit OUTSIDE `.fan`, so `--u` does not reach them and the
+     fallback of `1px` applies — they stay a true 44px at every viewport
+     height. That is deliberate: the buttons and dots are interactive targets,
+     and shrinking them below 44px to buy vertical room would trade an
+     accessibility floor for cosmetics. The section's height budget reserves
+     their full size, so nothing is squeezed. */
+  .fan-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(44 * var(--u, 1px));
+    height: calc(44 * var(--u, 1px));
+    border-radius: 50%;
+    border: 1.5px solid rgb(0 0 0 / 0.1);
+    background-color: rgb(0 0 0 / 0.05);
+    backdrop-filter: blur(16px);
+    color: var(--color-ink);
+    cursor: pointer;
+    outline: none;
+    box-shadow: 0 calc(4 * var(--u, 1px)) calc(20 * var(--u, 1px)) rgb(0 0 0 / 0.1);
+    transition:
+      background-color 300ms var(--ease-out-soft),
+      border-color 300ms var(--ease-out-soft),
+      transform 160ms var(--ease-out-soft);
+  }
+
+  .fan-btn:active {
+    transform: scale(0.94);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .fan-btn:hover {
+      background-color: rgb(0 0 0 / 0.09);
+      border-color: rgb(0 0 0 / 0.2);
+    }
+  }
+
+  .fan-dot {
+    display: block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: rgb(118 69 59 / 0.2);
+    transition:
+      background-color 300ms var(--ease-out-soft),
+      transform 300ms var(--ease-out-soft);
+  }
+
+  .fan-dot[data-active="true"] {
+    background-color: var(--color-ink);
+    transform: scale(1.3);
+  }
+
+  /* ------------------------------------------------------------ experience
+     NOT in the reference — original work in the language Hero, Signature and
+     Menu established: dark ground, display type, amber as the single accent.
+
+     The strip is pinned and translated horizontally by vertical scroll, so it
+     needs its own viewport-fitting budget just like the Menu did. Everything
+     is expressed from `--exp-img-h`, so one value sizes the whole composition
+     and a short viewport shrinks the photographs rather than pushing the
+     section past the fold.
+
+     52svh was chosen so the tallest case fits: at 780px tall the image is
+     406px and the total comes to ~751px, leaving real breathing room.
+     `svh` rather than `vh` so browser chrome collapsing cannot clip it. */
+
+  .exp-pin {
+    /* 58svh measured against the real budget: everything that is not the
+       image totals ~235px (heading 64, gaps, the caption block, progress), so
+       at 700px tall the image gets 406px and the section still fits with
+       slack. The 620px ceiling keeps a single panel from dominating on very
+       tall displays. */
+    --exp-img-h: clamp(200px, 58svh, 620px);
+    --exp-gap: clamp(1.5rem, 2.6vw, 3rem);
+
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: clamp(1.75rem, 4.5vh, 3.5rem);
+    height: 100svh;
+    /* Contains the very wide track. `clip` rather than `hidden`: the strip is
+       translated by transform, and a scroll container here would give it a
+       second, competing scrollbar. */
+    overflow: clip;
+  }
+
+  .exp-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2rem;
+    padding-inline: var(--spacing-gutter);
+  }
+
+  /* The strip. `width: max-content` so it never wraps and its true scrollWidth
+     is what the ScrollTrigger measures. */
+  .exp-track {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--exp-gap);
+    width: max-content;
+    padding-inline: var(--spacing-gutter);
+    will-change: transform;
+  }
+
+  .exp-panel {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: clamp(0.75rem, 1.6vh, 1.25rem);
+  }
+
+  /* Width is derived, not declared: a definite height plus `aspect-ratio`
+     gives each panel the width of its own photograph, which is what produces
+     the strip's alternating narrow/wide rhythm. */
+  .exp-panel__frame {
+    position: relative;
+    height: var(--exp-img-h);
+    aspect-ratio: var(--aspect);
+    overflow: hidden;
+    background-color: rgb(0 0 0 / 0.25);
+  }
+
+  .exp-panel__img {
+    object-fit: cover;
+  }
+
+  .exp-panel__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    /* No max-width here. An earlier `32ch` cap was meant to set a readable
+       measure for the description, but it also constrained the TITLE — and
+       "Coffee Conversations" needs 354px while the cap allowed 350px, so it
+       wrapped to two lines on its own while every other title stayed on one.
+       The measure belongs on the description, where it actually applies.
+
+       `container-type: inline-size` makes this element a query container so
+       the title can size itself against the PANEL rather than the viewport —
+       see the title rule below for why that matters. Safe here because the
+       width is imposed by the parent's flex stretch, not by its own content. */
+    container-type: inline-size;
+  }
+
+  .exp-panel__title {
+    /* Panel width is a function of viewport HEIGHT (`--exp-img-h`), but a
+       `vw`-based font-size is a function of viewport WIDTH. Those two diverge
+       on a short-and-wide viewport, which produces narrow panels carrying
+       large type — measured at 1920x650 and 2560x700, "Evening Gatherings"
+       needed 334px inside a 333px panel and overflowed by 1px.
+
+       `min()` against a container-relative cap ties the type back to the
+       panel, so the relationship holds at every viewport instead of only the
+       ones tested. 7.2cqi keeps the longest title inside ~93% of its panel. */
+    font-size: min(clamp(1.375rem, 1.9vw, 1.875rem), 7.2cqi);
+    line-height: 1.1;
+    color: var(--color-cream);
+    margin: 0;
+    /* Single-line by design: "Coffee Conversations" wrapped while every other
+       title stayed on one line, which broke the strip's rhythm. With the
+       container-relative cap above this is now a guarantee rather than a
+       clamp that merely happens to be big enough. */
+    white-space: nowrap;
+  }
+
+  .exp-panel__desc {
+    font-size: var(--text-body);
+    line-height: 1.5;
+    color: rgb(254 254 252 / 0.6);
+    margin: 0;
+    /* A comfortable reading measure, independent of how wide the panel is.
+       The widest panel is 696px; full-width body copy at that length is hard
+       to track, so it is held to roughly 45 characters. */
+    max-width: 34ch;
+  }
+
+  /* A one-pixel timeline. It earns its place: once the section is pinned the
+     page scrollbar no longer reports position within it, so without this the
+     user loses all sense of how much strip is left. */
+  .exp-progress {
+    position: relative;
+    height: 1px;
+    margin-inline: var(--spacing-gutter);
+    background-color: rgb(254 254 252 / 0.15);
+  }
+
+  .exp-progress__fill {
+    position: absolute;
+    inset: 0;
+    background-color: var(--color-amber);
+    transform: scaleX(0);
+    transform-origin: left center;
+  }
+
+  /* ------------------------------------------------------------- line clip
+     Used on each line of an oversized heading.
+
+     A tight `line-height` makes the line box SHORTER than the glyphs it
+     contains, so ascenders and cap tops sit above the box. `overflow: hidden`
+     — which the entrance animation wants, to make letters rise into place —
+     then slices those tops off.
+
+     A negative top inset expands the clip region upward so only the bottom is
+     clipped. Replacing `overflow: hidden` rather than adding to it, because
+     the two would otherwise intersect and the clipping would return. */
+  .line-clip {
+    clip-path: inset(-0.4em 0 0 0);
+  }
+}
+
+/* ============================================================================
+   KEYFRAMES
+   Keyframes are not subject to the cascade, so they stay at the top level.
+   ========================================================================= */
+
+@keyframes cue-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateY(0.35rem);
+    opacity: 1;
+  }
+}
+
+/* ============================================================================
+   REDUCED MOTION
+
+   Unlayered so the `!important` declarations cannot be inverted by layer
+   order. Decorative motion is disabled outright; GSAP-driven scroll
+   storytelling is neutralised separately in JS, because it has to unpin
+   sections rather than simply stop animating.
+   ========================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The word hover still swaps colour, it just does so instantly — the swap
+     carries meaning, the travel does not. */
+  .hero-word__stack {
+    transition: none;
+  }
+
+  .cue__arrow {
+    animation: none;
+    opacity: 1;
+  }
+
+  /* Experience: with no pin and no GSAP translation, the strip becomes a
+     native horizontal scroller so every panel stays reachable. Without this
+     the track would simply overflow its section and the later panels would be
+     permanently cut off — the reduced-motion path would lose content rather
+     than just losing motion.
+     The section is also released to auto height, since it no longer needs to
+     fit one viewport for a pin to work. */
+  .exp-pin {
+    height: auto;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .exp-pin::-webkit-scrollbar {
+    display: none;
+  }
+
+  .exp-progress {
+    display: none;
+  }
+
+  /* Bean to Cup: the wheel's easing is already dropped in JS when reduced
+     motion is set, so turning it lands immediately instead of gliding. What
+     is left here is the settle-on-an-item behaviour, which is not motion but
+     correctness — without it the drum can rest between two cards, showing
+     neither. No CSS override is needed for the cards themselves: the wheel
+     writes plain transforms, which remain valid and visible. */
+}
