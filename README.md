@@ -5,8 +5,8 @@ in Next.js from a Framer reference (`altruistic-pitch-532973.framer.app`). No
 Framer runtime, no iframe, no embedded frames — the design and motion language
 are reimplemented from scratch.
 
-> **Status: Step 5 of 9 complete.** Navbar, Hero, Signature, Menu and
-> Experience are built. See [Build order](#build-order) below.
+> **Status: Step 6 of 9 complete.** Navbar, Hero, Signature, Menu, Experience
+> and Bean to Cup are built. See [Build order](#build-order) below.
 
 ---
 
@@ -16,7 +16,7 @@ are reimplemented from scratch.
 |---|---|
 | Framework | Next.js 16 (App Router), React 19, TypeScript |
 | Styling | Tailwind CSS v4 with a CSS-variable design system |
-| Motion | GSAP 3 + ScrollTrigger (installed, not yet used) |
+| Motion | GSAP 3 + ScrollTrigger, plus hand-written rAF where a timeline would be the wrong tool |
 | Images | `next/image`, all assets local under `public/images/` |
 
 ---
@@ -74,8 +74,8 @@ It also has no `backdrop-filter`, and its three bars sit at `x` 28–52, `y` 10 
 19.14 / 28.28, `h` 5.72, `rx` 2.86.
 
 The reference covers only **Hero, Signature and Menu** (as two fan carousels).
-Experience, Bean to Cup, Gallery, CTA and Footer do not exist in it, so those
-will be original work in the same visual language.
+Experience, Bean to Cup, Gallery, CTA and Footer do not exist in it, so those are
+original work in the same visual language.
 
 ### Extracted tokens
 
@@ -87,6 +87,7 @@ will be original work in the same visual language.
 | `--color-coffee-deep` | `#59342c` | reference card-description colour |
 | `--color-amber` | `#e39f01` | reference `rgb(227,159,1)` hero accent |
 | `--color-coffee-dark` | `#2a1712` | deeper tone for dark surfaces |
+| `--color-amber-deep` | `#a06a00` | **not the reference's** — amber fails AA on cream (2.25:1), so the accent is a pair chosen by ground. See [Bean to Cup](#bean-to-cup--original-work-and-the-wheel) |
 
 **Typography:** the reference sets *all* display type in **Plus Jakarta Sans
 700** — not a serif. It loads weights 600 and 700 only. `letter-spacing`
@@ -114,6 +115,8 @@ components/
   signature/Signature.tsx five-phase pinned panel choreography
   menu/Menu.tsx           fan carousel with autoplay, tabs, keyboard
   experience/Experience.tsx  pinned horizontal strip
+  bean-to-cup/BeanToCup.tsx  the six stages as a turnable wheel
+  ui/works-wheel.tsx      ring -> drum wheel, one rAF pass, own scroll
   ui/SplitText.tsx        per-character reveal primitive (aria-safe)
 
 data/
@@ -121,6 +124,7 @@ data/
   signature.ts            panel offsets, phase boundaries, geometry
   menu.ts                 drinks + foods items, categories, price format
   experience.ts           the five moments, true aspect ratios
+  beanToCup.ts            the six stages, copy and alt text
 
 lib/
   useSectionTheme.ts      IntersectionObserver -> which theme is under the nav
@@ -128,6 +132,7 @@ lib/
   animations.ts           shared easing / duration / reveal tokens,
                           incl. the critically damped text-reveal ease
   fanLayout.ts            fan slot geometry (scale / rotate / translate)
+  utils.ts                `cn()` — clsx + tailwind-merge
 ```
 
 Content is kept separate from presentation. Nothing in `components/` hardcodes a
@@ -162,6 +167,12 @@ section sits under the pill, and the pill inverts to stay legible against it.
 Sections opt in by declaring `data-theme="light|dark|ink"`. The nav never
 hardcodes a colour and never needs to know a section's name — adding a section
 later requires only the attribute.
+
+The same attribute also publishes four tokens for any component that has to work
+on more than one ground (`--section-fg`, `--section-muted`, `--section-accent`,
+`--section-shadow`), each chosen to clear 4.5:1 against its own `--section-bg`.
+The nav reads the first two; the Bean to Cup wheel reads all four. See
+[Theme tokens](#theme-tokens).
 
 Mechanically, an `IntersectionObserver` watches a band across the upper
 viewport. It fires only when the *set* of sections in that band changes, which
@@ -207,7 +218,7 @@ Sections are built and reviewed **one at a time**.
 | 3 | Signature | ✅ complete |
 | 4 | Menu | ✅ complete |
 | 5 | Experience | ✅ complete |
-| 6 | Bean to Cup | ⬜ not started |
+| 6 | Bean to Cup | ✅ complete |
 | 7 | Gallery | ⬜ not started |
 | 8 | CTA | ⬜ not started |
 | 9 | Footer | ⬜ not started |
@@ -578,6 +589,148 @@ Under reduced motion the panels render in their spread state as a static 2×2
 composition. The timeline's resting state is "stacked", which would be four
 images piled on one another — so this is set explicitly rather than left to the
 default.
+
+### Bean to Cup — original work, and the wheel
+
+**Not in the reference.** Six stages, rendered as a wheel you turn: at rest the
+cards sit in a ring around the section title, the first notch of scroll blows the
+ring open into a vertical drum, and turning carries the next stage round to the
+front. The whole thing is one number read by a single rAF pass that writes
+transforms straight to the DOM.
+
+**The input model is the interesting part, and it was wrong at first.**
+
+The wheel originally advanced by `deltaY / 900` and then, 140ms after the last
+wheel event, rounded the result onto an item. That is wrong for the most ordinary
+gesture there is: a mouse notch is **100px**, which is 0.11 of an item. The settle
+then rounded it back to where it started — while `preventDefault` had already
+eaten the page scroll. A reader scrolling normally got a wheel that did not turn
+and a page that did not move. Measured: twelve consecutive notches at 80ms left
+the wheel at the ring, and the page stuck with the section 430px below the fold.
+It shipped because the only test drove the wheel with `mouse.wheel(0, 2000)`,
+which is not a gesture any input device produces.
+
+Two invariants replaced it:
+
+1. **A gesture the wheel consumes must move it.** The wheel now counts *notches*:
+   deltas accumulate, each full 100px advances exactly one item, and the
+   remainder is kept. `deltaMode` is normalised first, because Firefox reports
+   lines rather than pixels and 3 lines read as 3px would never add up to a notch
+   at all. A trackpad's stream of 12px deltas now crosses the notch at exactly
+   100px — verified by watching it turn on the tenth event and not the ninth.
+2. **The page must never become unscrollable.** The wheel only takes the gesture
+   once it fills the frame, and only while it has somewhere to go. Before that —
+   and again at either end — the browser keeps the scroll. Bean to Cup is the last
+   section, so its top *is* the maximum scroll; the check is therefore that the
+   wheel stops consuming the event, not that the page moves.
+
+A third bug surfaced from the same area: releasing a drag was guarded by
+`if (target > 1)`, which skipped the entire `0..1` range — precisely the
+ring-to-drum transition. A 30/60/120/200px drag left the wheel stranded half-way,
+the ring label at half opacity over a half-turned drum, with no way back. Rounding
+always lands on a rest state, so the guard is gone.
+
+**The ring is solved, not fixed.** The ring's vertical extent is
+`2·ringR + cardH·ringScale`, and `ringScale` is itself proportional to `ringR`, so
+the whole thing is linear and has a closed form. Solving it for the stage means
+the ring fits at every viewport; the previous constant `cardH · 1.14` produced a
+998px ring inside a 900px stage at 1440×900 — 49px sliced off the top and bottom
+cards, which is exactly the "closed loop" the ring exists to read as.
+
+**Light ground.** The section declares `data-theme="light"`, so the page runs
+coffee → cream → cream → ink → **cream**, which also breaks up what was a
+double-dark ending. This is the one section where light needed care, and the
+reasoning is in the two findings below.
+
+#### The accent that could not be reused
+
+`--color-amber` is the reference's hero accent, and on a dark ground it is
+excellent — 7.50:1 on coffee-dark. On cream it collapses to **2.25:1**, under the
+4.5:1 that AA requires and well under what the 13.5px index numerals need. Amber
+is simply a light colour.
+
+So the accent is a *pair*, selected by ground rather than darkened by hand:
+`--color-amber` on dark, and a new `--color-amber-deep` (`#a06a00`, same hue at
+L30%) on light, where it measures **4.56:1**. `--color-amber-deep` is the only
+token in the design system that is not the reference's own, and it is marked as
+such in `globals.css`.
+
+#### The card plate, and a bug the conversion exposed
+
+Three of the six stages are transparent cutouts, so their card plate is the whole
+visual ground for a third of the section. Measured mean-luminance contrast of each
+cutout against its plate:
+
+| plate | beans-small | beans-cutout | cup |
+|---|---|---|---|
+| `coffee-dark` `#2a1712` | **4.30** | **4.32** | 10.29 |
+| `coffee` `#76453b` | 1.97 | 1.98 | 4.72 |
+| `cream` `#fefefc` | 3.94 | 3.91 | **1.64** |
+
+The wheel had shipped on the brown plate, which puts the bean cutouts at
+**1.97:1** — roughly half their pixels below 2:1, reading as mud. That is a bug in
+the dark build, found while converting, and fixed here by moving the plate to
+`--color-coffee-dark`.
+
+It also settles the question of whether light mode should mean *light cards*. It
+should not: the cup is a white object and vanishes against a light plate at
+1.64:1. The drum stays a dark object on a light page, which is what lets all three
+cutouts read — and the photographs are near-black anyway (mean luminance
+0.04–0.07), so the drum was never going to be uniformly light.
+
+#### Theme tokens
+
+The wheel is a `ui/` primitive, so it must not assume a dark surface. It reads
+colour from the same `[data-theme]` contract the nav already used, extended with
+the three values a component needs beyond the nav's two:
+
+```
+--section-fg      primary text
+--section-muted   secondary text
+--section-accent  the one accent that passes AA on this ground
+--section-shadow  card elevation, which reads very differently on cream
+```
+
+Every value clears 4.5:1 against its own `--section-bg`, so a component can use
+them for text without re-checking per section. Verified in the suite by computing
+contrast from the live DOM.
+
+One implementation note: the wheel's text colours are classes (`.wheel-fg`,
+`.wheel-muted`, `.wheel-accent`) rather than Tailwind arbitrary values, because
+`tailwind-merge` cannot distinguish `text-[var(--section-fg)]` from
+`text-[var(--section-muted)]` — both are bare `var()` references with no unit for
+it to classify, so it treats them as the same property and drops the first. On the
+index buttons, which apply one at rest and the other when active, that silently
+deleted the resting colour.
+
+#### The index that did not line up with the pill
+
+The stage index was anchored with `top-[7.5%] right-[2.5%]` — percentages of the
+**viewport** — while the nav pill is anchored to `.shell`. Two different frames of
+reference, so the two drifted apart:
+
+| viewport | pill right | index right | drift | vertical gap |
+|---|---|---|---|---|
+| 1280×900 | 1216 | 1248 | 32px | 12px |
+| 1600×900 | 1488 | 1560 | 72px | 12px |
+| 1920×1080 | 1648 | 1872 | **224px** | 25px |
+| 1280×650 | 1216 | 1248 | 32px | **−7px** |
+
+The horizontal drift grows with the viewport, because `.shell` is capped at
+96rem and centred while a percentage is not. The vertical error was worse than
+cosmetic: `7.5%` is 68px on a 900px-tall viewport but 49px on a 650px one, and
+the pill occupies 12..56px — so on a short viewport the first row sat *inside*
+the pill.
+
+The fix is to stop using a second frame of reference. The index is now wrapped in
+`.shell`, so its right edge is the pill's own by construction — same container,
+same `padding-inline`, same centring — and `--nav-clearance` (12px offset + 44px
+pill + 24px gap = 5rem) replaces the percentage on the other axis. Measured 0px
+drift and a constant 24px gap from 1280×650 to 1920×1080.
+
+The general lesson is in the token: a percentage of the viewport is the wrong
+unit for clearing a **fixed** element, because the two only coincide at one
+viewport size.
 
 ---
 

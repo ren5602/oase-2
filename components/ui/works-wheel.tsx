@@ -67,13 +67,21 @@ const INDEX = 0.04; // the index down the right-hand side
     edge-on, and further round it would stack up on the vanishing point. */
 const CULL = 1.6;
 
-/** How much of a wheel-notch or a dragged pixel counts as one item. */
-const WHEEL_UNITS = 900;
+/** Scroll distance, in pixels, that turns the wheel by one item.
+    A mouse notch is 100px in Chrome and Edge and 48px in Firefox (which
+    reports lines), so one notch is one item and a trackpad — which delivers a
+    stream of small deltas — takes a short flick. */
+const NOTCH = 100;
+/** Firefox reports `deltaMode: 1` with the delta counted in lines. */
+const LINE_HEIGHT = 16;
+
+/** How much of a dragged pixel counts as one item. */
 const DRAG_UNITS = 420;
-/** Quiet time after the last wheel event before the wheel settles on an item. */
-const SETTLE = 140;
 /** Fraction of the remaining distance closed each frame. 1 = no smoothing. */
 const EASE = 0.12;
+
+/** The ring's share of the stage height. See the note in `metrics`. */
+const RING_FIT = 0.9;
 
 const clamp = (v: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, v));
@@ -158,7 +166,26 @@ export function WorksWheel({
     const cardW = Math.min(h * CARD_H * CARD_RATIO, w * CARD_MAX_W);
     const cardH = cardW / CARD_RATIO;
     const drumR = cardH * DRUM;
-    const ringR = cardH * RING_R;
+
+    /* Ring radius, SOLVED rather than fixed.
+
+       The ring's vertical extent is `2·ringR + cardH·ringScale`, and
+       `ringScale` is itself proportional to `ringR` (it is the card size that
+       makes `count` of them close the circle), so the whole thing is linear in
+       `ringR` and has a closed form:
+
+         extent = ringR · (2 + 2π·0.82 / (count · CARD_RATIO))
+
+       Solving that for a ring that fits the stage is what stops the top and
+       bottom cards being sliced off. The fixed `cardH · 1.14` this replaces
+       produced a 998px ring inside a 900px stage at 1440x900 — 49px cut from
+       each end, which is precisely the "closed loop" read the ring is for.
+       The cap keeps the original design value on stages tall enough to take
+       it, so nothing changes where there was already room. */
+    const ringCoef = 2 + (2 * Math.PI * 0.82) / (count * CARD_RATIO);
+    const ringR = count
+      ? Math.min(cardH * RING_R, (h * RING_FIT) / ringCoef)
+      : cardH * RING_R;
     // Shrink the ring's cards until the circle reads as a closed loop rather
     // than beads on a wire, however many pieces the wheel is given.
     const ringScale = count
@@ -241,34 +268,106 @@ export function WorksWheel({
     [last],
   );
 
-  const settling = React.useRef(0);
+  /* Whether the wheel is the thing on screen.
 
-  // Native listener, because the wheel has to be cancellable - and it only
+     The section is exactly one viewport tall, so this is true once the stage's
+     top reaches the top of the viewport — at which point the wheel fills the
+     frame and taking the scroll is reasonable.
+
+     It exists because taking the scroll ANY EARLIER is a trap. The wheel is the
+     last thing on the page, so while the reader is still scrolling down into
+     it, the page scroll is the only way to finish arriving — and an ungated
+     handler would cancel every gesture and strand them with the section half
+     off the top of the screen. Measured: the page stuck at the section top
+     sitting 430px down, with no way to move it.
+
+     Read in a passive scroll listener rather than inside the wheel handler, so
+     the handler itself stays free of layout reads. */
+  const inPlace = React.useRef(false);
+
+  React.useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+
+    const read = () => {
+      // 2px of tolerance for fractional scroll offsets and subpixel layout.
+      inPlace.current = el.getBoundingClientRect().top <= 2;
+    };
+
+    read();
+    window.addEventListener("scroll", read, { passive: true });
+    window.addEventListener("resize", read);
+    return () => {
+      window.removeEventListener("scroll", read);
+      window.removeEventListener("resize", read);
+    };
+  }, []);
+
+  /* Pixels of scroll carried toward the next item.
+
+     The wheel moves in whole items, so a gesture that does not yet add up to a
+     full notch has to be remembered rather than dropped — a trackpad delivers
+     its travel as a stream of small deltas and none of them is a notch on its
+     own. */
+  const carry = React.useRef(0);
+
+  // Native listener, because the wheel has to be cancellable — and it only
   // cancels while it still has somewhere to go, so the page scrolls on at
   // either end instead of trapping the reader.
   React.useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
+
     const onWheel = (event: WheelEvent) => {
-      const next = target.current + event.deltaY / WHEEL_UNITS;
-      if (next > 0 && next < last + 1) event.preventDefault();
-      to(next);
-      // A wheel gesture arrives as a burst of events with no end of its own, so
-      // the rest position is whatever notch it happened to stop on. Left there
-      // the drum sits between two cards - nothing at the front, and the pair
-      // either side of the gap both turned half away. Settle onto an item.
-      window.clearTimeout(settling.current);
-      settling.current = window.setTimeout(
-        () => to(Math.round(target.current)),
-        SETTLE,
-      );
+      /* Normalise `deltaMode` first. Chrome and Edge report pixels, but
+         Firefox reports LINES (mode 1) — 3 lines per notch, which read as 3px
+         would never add up to a notch at all and the wheel would simply never
+         turn there. */
+      const per =
+        event.deltaMode === 1
+          ? LINE_HEIGHT
+          : event.deltaMode === 2
+            ? el.clientHeight
+            : 1;
+      const px = event.deltaY * per;
+
+      // Carried pixels only mean anything in the direction they were going:
+      // hold 80px of downward travel and the first upward notch would be
+      // swallowed by it.
+      if (px * carry.current < 0) carry.current = 0;
+
+      const room =
+        px > 0 ? target.current < last + 1 : target.current > 0;
+
+      if (!inPlace.current || !room) {
+        carry.current = 0;
+        return;
+      }
+
+      /* Consume the event. This is safe precisely because `room` held: there is
+         somewhere for the wheel to go in this direction. */
+      event.preventDefault();
+
+      const steps = Math.trunc((carry.current + px) / NOTCH);
+
+      if (steps === 0) {
+        carry.current += px;
+        return;
+      }
+
+      const next = clamp(target.current + steps, 0, last + 1);
+      const applied = next - target.current;
+      target.current = next;
+      /* Keep the remainder so a fast burst does not lose its tail — but only
+         when nothing was clamped away, since otherwise the leftover belongs to
+         travel that did not happen. */
+      carry.current =
+        applied === steps ? carry.current + px - steps * NOTCH : 0;
     };
+
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => {
-      el.removeEventListener("wheel", onWheel);
-      window.clearTimeout(settling.current);
-    };
-  }, [to, last]);
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [last]);
 
   const drag = React.useRef<number | null>(null);
 
@@ -287,7 +386,7 @@ export function WorksWheel({
         role="listbox"
         aria-label={label}
         aria-activedescendant={`works-wheel-${active}`}
-        className="absolute inset-0 cursor-grab touch-pan-x outline-none focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-cream active:cursor-grabbing"
+        className="absolute inset-0 cursor-grab touch-pan-x outline-none focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-current active:cursor-grabbing"
         style={{ perspective: `${metrics.depth}px` }}
         onPointerDown={(event) => {
           drag.current = event.clientY;
@@ -299,9 +398,18 @@ export function WorksWheel({
           drag.current = event.clientY;
         }}
         onPointerUp={() => {
-          // Land on an item rather than between two.
+          /* Land on an item rather than between two.
+
+             `turn` runs 0 (ring) -> 1 (drum, item 0) -> 2 (item 1) and so on,
+             so rounding always lands on a rest state. The guard this replaces
+             was `if (target.current > 1)`, which skipped the whole 0..1 range —
+             exactly the ring-to-drum transition. Releasing a drag partway
+             through it left the wheel at, say, 0.48: the ring label at half
+             opacity over a half-turned drum, which is neither state and has no
+             way back. Measured at 30/60/120/200px of drag; 10px and 420px
+             happened to clear it, which is why it looked intermittent. */
           drag.current = null;
-          if (target.current > 1) to(Math.round(target.current));
+          to(Math.round(target.current));
         }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown") to(Math.round(target.current) + 1);
@@ -334,7 +442,7 @@ export function WorksWheel({
                     marginTop: -metrics.cardH / 2,
                   }}
                 >
-                  <span className="relative block size-full overflow-hidden rounded-xl bg-coffee shadow-[0_18px_40px_-18px_rgb(0_0_0/0.55)]">
+                  <span className="wheel-card">
                     {/* `next/image` rather than `<img>`: every other image in
                         this project goes through it, and the cards are large
                         enough that the optimisation is worth having. `fill`
@@ -349,6 +457,10 @@ export function WorksWheel({
                       className="object-cover"
                     />
                     {action && item.href ? (
+                      /* Deliberately NOT themed. This chip is a scrim that sits
+                         on the photograph itself, not on the section ground, so
+                         it follows `.sig-caption`'s convention of dark-over-
+                         image rather than the section's theme. */
                       <span className="pointer-events-none absolute right-3 bottom-3 flex translate-y-1 items-center gap-1 rounded-full bg-coffee-dark/80 px-2.5 py-1 text-[0.7rem] text-cream opacity-0 backdrop-blur-sm transition group-hover:translate-y-0 group-hover:opacity-100">
                         <svg
                           viewBox="0 0 12 12"
@@ -377,10 +489,14 @@ export function WorksWheel({
 
       {/* Ring title and front-card title trade places across the transition.
           Type is sized off the measured stage, not vh, so the wheel keeps its
-          proportions inside a card as well as at full bleed. */}
+          proportions inside a card as well as at full bleed.
+
+          Colour comes from `--section-fg` rather than a literal, because the
+          wheel is a `ui/` primitive and the section it sits in decides its own
+          ground. */}
       <div
         ref={labelRef}
-        className="display pointer-events-none absolute inset-0 grid place-items-center tracking-tight text-cream"
+        className="display wheel-fg pointer-events-none absolute inset-0 grid place-items-center tracking-tight"
         style={{ fontSize: metrics.title }}
       >
         {label}
@@ -390,40 +506,70 @@ export function WorksWheel({
         className="pointer-events-none absolute top-1/2 left-[8%] -translate-y-1/2 opacity-0"
         style={{ fontSize: metrics.title }}
       >
-        <span className="display block text-cream">{items[active]?.title}</span>
+        <span className="display wheel-fg block">{items[active]?.title}</span>
       </div>
       {/* The stage description, revealed with the front title. Kept in the
           same block so the two can never desynchronise. */}
       <div
         ref={descRef}
-        className="pointer-events-none absolute top-1/2 left-[8%] max-w-[26ch] translate-y-[calc(50%+1.6em)] text-cream/60 opacity-0"
+        className="wheel-muted pointer-events-none absolute top-1/2 left-[8%] max-w-[26ch] translate-y-[calc(50%+1.6em)] opacity-0"
         style={{ fontSize: metrics.index * 0.92 }}
       >
         {items[active]?.description}
       </div>
 
-      <ol
-        className="absolute top-[7.5%] right-[2.5%] text-right leading-[1.75]"
-        style={{ fontSize: metrics.index }}
-      >
-        {items.map((item, i) => (
-          <li key={item.title} className="flex items-baseline justify-end gap-2">
-            {item.index ? (
-              <span className="label text-amber">{item.index}</span>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => to(i + 1)}
-              className={cn(
-                "cursor-pointer text-cream/40 transition-colors outline-none focus-visible:outline-1 focus-visible:outline-cream",
-                i === active && "font-medium text-cream",
-              )}
-            >
-              {item.title}
-            </button>
-          </li>
-        ))}
-      </ol>
+      {/* The index, anchored to the same gutter as the nav pill.
+
+          It used to be `top-[7.5%] right-[2.5%]` — percentages of the viewport
+          — which put it out of line with the pill on both axes, because the
+          pill is anchored to `.shell` instead:
+
+            viewport   pill right   index right   drift
+            1280x900       1216          1248       32px
+            1600x900       1488          1560       72px
+            1920x1080      1648          1872      224px
+
+          The drift grows with the viewport, because `.shell` is capped at
+          96rem and centred while a percentage is not. Vertically it was worse
+          than cosmetic: 7.5% is 68px at 900px tall but 49px at 650px, and the
+          pill occupies 12..56px — so on a short viewport the first row sat
+          INSIDE the pill.
+
+          Wrapping it in `.shell` makes both edges the pill's own by
+          construction: the same container, the same `padding-inline`, the same
+          centring. `--nav-clearance` replaces the percentage on the other
+          axis. */}
+      <div className="pointer-events-none absolute inset-x-0 top-[var(--nav-clearance)]">
+        <div className="shell">
+          <ol
+            className="pointer-events-auto ml-auto w-fit text-right leading-[1.75]"
+            style={{ fontSize: metrics.index }}
+          >
+            {items.map((item, i) => (
+              <li key={item.title} className="flex items-baseline justify-end gap-2">
+                {item.index ? (
+                  <span className="label wheel-accent">{item.index}</span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => to(i + 1)}
+                  className={cn(
+                    "cursor-pointer transition-colors outline-none focus-visible:outline-1 focus-visible:outline-current",
+                    // Either/or rather than both-with-one-overriding. The two
+                    // classes set the same property at the same specificity, so
+                    // having both would make the winner depend on their order in
+                    // the stylesheet — which is exactly the kind of coupling that
+                    // breaks silently when a rule is moved.
+                    i === active ? "wheel-fg font-medium" : "wheel-muted",
+                  )}
+                >
+                  {item.title}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
     </section>
   );
 }

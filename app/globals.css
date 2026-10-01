@@ -61,6 +61,21 @@
   --color-coffee-dark: #2a1712;
   --color-amber: #e39f01;
 
+  /* A deliberate departure, and the only colour here that is not the
+     reference's own.
+
+     `--color-amber` is the reference's hero accent, rgb(227,159,1), and it is
+     used verbatim wherever it sits on a dark ground — it measures 7.50:1 on
+     coffee-dark, which is excellent. But it is a LIGHT colour, and on cream it
+     collapses to 2.25:1, well under the 4.5:1 that AA requires for normal text.
+     That is fine for the Hero, where amber is a hover flash on 132px type; it
+     is not fine for the 13.5px index numerals in Bean to Cup.
+
+     So the accent is a PAIR, chosen by ground rather than swapped by hand:
+     `--color-amber` on dark, `--color-amber-deep` on light. Same hue family,
+     darkened to L30%, which lands at 4.56:1 on cream. */
+  --color-amber-deep: #a06a00;
+
   /* -------------------------------------------------------------- typefaces
      The reference sets ALL display type in Plus Jakarta Sans 700 — not a
      serif. Its own @font-face blocks load weights 600 and 700 only.
@@ -92,6 +107,19 @@
      Gutter scales across the desktop range only. */
   --spacing-gutter: clamp(1.5rem, 5vw, 5rem);
   --spacing-section: clamp(5rem, 12vh, 11rem);
+
+  /* Clearance for content anchored to the top of a section, so it sits below
+     the fixed nav instead of underneath it.
+
+     The nav is fixed and does not move: the pill sits at a 12px top offset and
+     is 44px tall, so it occupies 12..56px at every viewport. Add a 24px gap and
+     the first row of anything starts at 80px.
+
+     Derived rather than eyeballed, because the failure mode is silent: the Bean
+     to Cup index used `top: 7.5%`, which is 68px on a 900px-tall viewport but
+     49px on a 650px one — 7px INSIDE the pill. A percentage of the viewport is
+     the wrong unit for clearing a fixed element. */
+  --nav-clearance: 5rem; /* 12px offset + 44px pill + 24px gap */
 }
 
 /* ============================================================================
@@ -306,19 +334,59 @@
 
   /* ----------------------------------------------------------- section theme
      Drives the nav inversion. Any section declares its own theme and the nav
-     follows, so no colour is hardcoded in the nav itself. */
+     follows, so no colour is hardcoded in the nav itself.
+
+     `--section-fg` and `--section-bg` are what the NAV reads. The remaining
+     three are the general contract a section can hand to a component that has
+     to work on more than one ground — currently the Bean to Cup wheel, which
+     is a `ui/` primitive and so must not assume a dark surface:
+
+       --section-fg      primary text on this ground
+       --section-muted   secondary text (descriptions, inactive list items)
+       --section-accent  the accent for this ground
+       --section-shadow  card elevation, which reads very differently on a
+                         light ground than a dark one
+
+     CONTRAST, measured rather than assumed — `fg` and `muted` are safe for body
+     text on every ground, `accent` is not:
+
+                        --section-fg   --section-muted   --section-accent
+       light  (cream)      19.49:1          7.75:1            4.56:1
+       dark   (coffee)      7.75:1          4.91:1            3.44:1  <- large
+       ink    (coffee-dark) 16.91:1         6.77:1            7.50:1
+
+     `dark` is the Hero's ground, and it is the lightest of the three, so both
+     its muted and its accent need more care. Muted is held at 72% rather than
+     the house 60% because 60% measures 3.94:1 there — under AA, and this token
+     is documented as secondary TEXT, so it has to hold.
+
+     The accent is left as the reference's own amber. It measures 3.44:1 on
+     coffee, which clears the 3:1 that large text requires and is exactly how
+     the reference uses it — a hover flash on 132px display type in the Hero.
+     It is NOT a body-text colour on that ground, so `--section-accent` must not
+     be used for small text in a `dark` section without re-checking. On `light`
+     and `ink` it does clear 4.5:1 and can be used freely. */
   [data-theme="light"] {
-    --section-fg: var(--color-ink);
+    --section-fg: var(--color-ink); /* 19.49:1 on cream */
+    --section-muted: var(--color-coffee); /* 7.75:1  on cream */
+    --section-accent: var(--color-amber-deep); /* 4.56:1  on cream */
+    --section-shadow: rgb(11 11 11 / 0.16);
     --section-bg: var(--color-cream);
   }
 
   [data-theme="dark"] {
-    --section-fg: var(--color-cream);
+    --section-fg: var(--color-cream); /* 7.75:1  on coffee */
+    --section-muted: rgb(254 254 252 / 0.72); /* 4.91:1  on coffee */
+    --section-accent: var(--color-amber); /* 3.44:1 — large text only here */
+    --section-shadow: rgb(0 0 0 / 0.45);
     --section-bg: var(--color-coffee);
   }
 
   [data-theme="ink"] {
-    --section-fg: var(--color-cream);
+    --section-fg: var(--color-cream); /* 16.91:1 on coffee-dark */
+    --section-muted: rgb(254 254 252 / 0.6); /* 6.77:1  on coffee-dark */
+    --section-accent: var(--color-amber); /* 7.50:1  on coffee-dark */
+    --section-shadow: rgb(0 0 0 / 0.55);
     --section-bg: var(--color-coffee-dark);
   }
 
@@ -827,6 +895,62 @@
   .line-clip {
     clip-path: inset(-0.4em 0 0 0);
   }
+
+  /* ------------------------------------------------------------ wheel card
+     The Bean to Cup card plate, and the reason it is a class rather than a
+     handful of utilities.
+
+     Three of the six stages are transparent CUTOUTS (beans-small, beans-cutout,
+     cup) so their plate is visible; the other three are photographs that fill
+     the card, so their plate is never seen. That makes this one background the
+     whole visual ground for a third of the section, and it is not a free
+     choice — measured mean luminance contrast of each cutout against it:
+
+       plate                beans-small   beans-cutout   cup
+       coffee-dark #2a1712      4.30          4.32       10.29   <- this
+       coffee      #76453b      1.97          1.98        4.72   <- was this
+       cream       #fefefc      3.94          3.91        1.64
+
+     The brown plate the wheel shipped with put the bean cutouts at 1.97:1, so
+     roughly half their pixels fell below 2:1 and the beans read as mud. The
+     dark plate carries all three, which is also why the drum keeps dark cards
+     on a light ground rather than turning them cream: the cup is a WHITE
+     object and vanishes against a light plate at 1.64:1.
+
+     `--section-shadow` rather than a literal, because elevation does not read
+     the same on both grounds — 55% black is right over coffee-dark and far too
+     heavy over cream. */
+  .wheel-card {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 12px;
+    background-color: var(--color-coffee-dark);
+    box-shadow: 0 18px 40px -18px var(--section-shadow, rgb(0 0 0 / 0.4));
+  }
+
+  /* The wheel's text, bound to whatever ground its section declares.
+
+     These exist as classes rather than Tailwind arbitrary values because
+     `tailwind-merge` cannot tell `text-[var(--section-fg)]` from
+     `text-[var(--section-muted)]` — both are bare `var()` references with no
+     unit for it to classify, so it treats them as the same property and drops
+     the first. On the index buttons, which apply one at rest and the other
+     when active, that silently deleted the resting colour. A class name is
+     unambiguous and `cn()` leaves it alone. */
+  .wheel-fg {
+    color: var(--section-fg, var(--color-cream));
+  }
+
+  .wheel-muted {
+    color: var(--section-muted, rgb(254 254 252 / 0.6));
+  }
+
+  .wheel-accent {
+    color: var(--section-accent, var(--color-amber));
+  }
 }
 
 /* ============================================================================
@@ -898,10 +1022,10 @@
     display: none;
   }
 
-  /* Bean to Cup: the wheel's easing is already dropped in JS when reduced
-     motion is set, so turning it lands immediately instead of gliding. What
-     is left here is the settle-on-an-item behaviour, which is not motion but
-     correctness — without it the drum can rest between two cards, showing
-     neither. No CSS override is needed for the cards themselves: the wheel
-     writes plain transforms, which remain valid and visible. */
+  /* Bean to Cup needs no reduced-motion override here. The wheel's easing is
+     already dropped in JS when the preference is set, so turning it lands
+     immediately instead of gliding, and the cards are positioned with plain
+     transforms that stay valid and visible either way. What the section does
+     depend on — a whole item always coming to the front — is enforced in the
+     input model rather than in CSS, so it holds for every reader. */
 }
