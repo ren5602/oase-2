@@ -105,7 +105,10 @@ export default function NavOverlay({ open, onClose }: NavOverlayProps) {
                   href={`#${link.id}`}
                   onClick={onClose}
                   data-nav-focus
-                  className="link-slide group display flex items-baseline gap-5 py-1 text-[clamp(2.5rem,5.2vw,4.75rem)]"
+                  /* `--screen-w` rather than a raw `5.2vw`: viewport units are
+                     not compensated by the page zoom, so a raw unit would make
+                     these links 25% too large on a magnified page. */
+                  className="link-slide group display flex items-baseline gap-5 py-1 text-[clamp(2.5rem,calc(0.052*var(--screen-w)),4.75rem)]"
                   /* Staggered entrance. Delay is zeroed on exit so the panel
                      clears immediately instead of waiting out the cascade. */
                   style={{

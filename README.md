@@ -36,7 +36,7 @@ npm run lint
 
 ---
 
-## Desktop only
+## Desktop only, and magnified above 1536
 
 The reference ships `<meta name="viewport" content="width=1440">` and a fixed
 `1440 × 11286px` canvas with **zero media queries**. There is no responsive
@@ -44,7 +44,35 @@ design to port and none was invented.
 
 This build targets desktop only. **There are no mobile or tablet breakpoints.**
 `clamp()` and `vw` are used solely so the desktop layout interpolates cleanly
-across **1280 / 1440 / 1600 / 1920**. Primary comparison viewport: **1440 × 900**.
+across **1280 / 1440 / 1536 / 1600 / 1920**. Primary comparison viewport:
+**1536 × 900**.
+
+### The page magnifies itself above 1536
+
+The composition was built and verified against a **1536 CSS-px viewport**,
+because that is what 125% browser zoom produced on a 1920 monitor during
+development. At 100% zoom the viewport is 1920 CSS px and the 1920 composition
+renders instead — a different, airier layout than the one the design was tuned
+to.
+
+So the page now **lays out at 1536 and magnifies up to 1.25×**, via `zoom` on
+the root element:
+
+| device width | zoom | layout width |
+|---|---|---|
+| 1280 / 1440 | 1 | 1280 / 1440 (unchanged) |
+| 1536 | 1 | 1536 |
+| 1600 | 1.042 | 1536 |
+| **1920** | **1.25** | **1536** |
+| 2560 | 1.25 (capped) | 2048 — more air |
+
+The full mechanism, the traps it exposes, and why the tokens exist are
+documented in [Page zoom](#page-zoom--the-design-is-1536-wide-magnified-up-to-125).
+The short version: **viewport units are not compensated by `zoom`**, so every
+`vw` / `svh` in the project is written against `--screen-w` / `--screen-h`
+instead, and JS that mixes `innerWidth` (device px) with `scrollWidth` (layout
+px) uses `lib/viewport.ts`.
+
 
 ---
 
@@ -128,6 +156,7 @@ data/
 
 lib/
   useSectionTheme.ts      IntersectionObserver -> which theme is under the nav
+  viewport.ts             pageZoom() / layoutWidth() — device px vs layout px
   scrollLock.ts           page scroll lock while the overlay is open
   animations.ts           shared easing / duration / reveal tokens,
                           incl. the critically damped text-reveal ease
@@ -141,6 +170,143 @@ menu item or a contact detail.
 ---
 
 ## Implementation notes
+
+### Page zoom — the design is 1536 wide, magnified up to 1.25
+
+The composition was built and verified against a 1536 CSS-px viewport. That was
+not a choice: it is what **125% browser zoom** produced on the 1920 monitor this
+was developed on, and it was mistaken for the 1920 default for the whole of the
+build. At 100% zoom the viewport is 1920 CSS px, so the 1920 composition renders
+— the same design, but with a quarter more air in it than any of the measured
+values assume.
+
+Rather than re-tune the layout for 1920, the page now lays out at 1536 and
+magnifies itself, via `zoom` on the root element:
+
+```css
+:root { --zoom: 1; --screen-h: 100svh; --screen-w: 100vw; }   /* fallback */
+
+@supports (zoom: calc(100vw / (1536 * 1px))) {   /* literal: @supports can't read var() */
+  :root {
+    --zoom:     clamp(1, calc(100vw / (1536 * 1px)), 1.25);
+    --screen-h: calc(100svh / var(--zoom));   /* one screen, in LAYOUT px */
+    --screen-w: calc(100vw / var(--zoom));
+  }
+}
+html { zoom: var(--zoom); }
+```
+
+`zoom` rather than `transform: scale()` because it scales the **layout** — the
+layout viewport itself becomes 1536 — which is what makes every existing
+measurement still mean what it meant. A transform would scale a painted copy of
+a 1920 layout and change nothing about how it was composed.
+
+The clamp's three jobs: `1` below the reference width, a fluid `1..1.25` across
+1536..1920, and a hard ceiling above it. It also composes correctly with real
+browser zoom — at 150% browser zoom on a 1920 window `100vw` is 1280, so
+`--zoom` clamps to 1 and the two never multiply into a double zoom.
+
+#### Viewport units are NOT compensated — this is the trap
+
+Measured in Chrome 154 at 1920 × 1080 with `html { zoom: 1.25 }`:
+
+| unit | resolves to | should be |
+|---|---|---|
+| `100vw` | 2400 device px | 1920 |
+| `100svh` | 1350 device px | 1080 |
+| `calc(100svh / 1.25)` | 1080 device px | 1080 ✓ |
+
+A viewport unit is resolved against the **outer** viewport and then multiplied
+by the effective zoom, so every `vw` and `svh` in the file overshot by exactly
+the zoom factor. `--screen-h` and `--screen-w` divide that back out, which makes
+them "one viewport, in layout px".
+
+**So a raw viewport unit anywhere in this project is a bug that only shows above
+1536.** Every one of them is written as a multiple of a compensated token:
+
+```css
+--text-body:       clamp(0.9375rem, calc(0.0105 * var(--screen-w)), 1.0625rem);
+--spacing-gutter:  clamp(1.5rem,    calc(0.05   * var(--screen-w)), 5rem);
+.sig-track         { height: calc(6 * var(--screen-h) + 1200px); }
+.fan               { --u: clamp(0.55px, calc((var(--screen-h) - 379px) / 476), 1px); }
+```
+
+`100vh`-style utilities in components are `min-h-[var(--screen-h)]` for the same
+reason. Every reference geometry value — 132px hero type, the 1796px cup, the
+1200 × 800 panels, the 200 × 370 cards — stays a **verbatim layout-px constant**,
+which is precisely why it now magnifies with the page instead of needing
+re-tuning.
+
+#### Two coordinate systems in one DOM
+
+`zoom` splits the DOM in two, and mixing them is wrong by exactly the zoom
+factor:
+
+| LAYOUT px | DEVICE px |
+|---|---|
+| `clientWidth`, `scrollWidth`, `offsetWidth` | `innerWidth`, `innerHeight` |
+| CSS lengths, `getComputedStyle` | `getBoundingClientRect()` |
+| `getComputedStyle(...).transform` | `IntersectionObserver` `rootMargin` |
+| `window.scrollY` (in px *scrolled*) | pointer `clientX` / `clientY` |
+
+Below 1536 the two are equal, which is exactly why this needed a helper rather
+than a convention: `lib/viewport.ts` exposes `pageZoom()`, `layoutWidth()` and
+`layoutHeight()`. Three call sites had a real bug:
+
+1. **Experience** subtracted `innerWidth` (device) from `scrollWidth` (layout),
+   so the strip travelled 25% too short and stranded the last panel.
+2. **`useSectionTheme`** compared a layout-px `PROBE` against a device-px
+   `rect.top`, so the theme band sat 8.5px above the pill's centre and flipped
+   early on every boundary. The probe is scaled up into device px, because
+   `rootMargin` cannot be expressed in layout px at all.
+3. **The wheel's drag** divided a device-px `clientY` delta by a layout-px
+   constant, making a drag 1.25× as sensitive as the same gesture at zoom 1.
+
+The Hero's pointer tilt needed no change: `clientX` and `innerWidth` are both
+device px, so that normalisation was already correct.
+
+#### The pin that could not be fixed
+
+Experience originally used GSAP's `pin: true`. Under zoom it broke in a way no
+single value could repair, because GSAP writes the two halves of a pin in
+different units:
+
+| quantity | value at 1920 × 960, `zoom: 1.25` | unit |
+|---|---|---|
+| strip overflow | 841 | layout px |
+| pin-spacer extra height | 1051.3 | device px (GSAP scaled it) |
+| `end: '+=' + distance()` | 841 | scroll px (GSAP did not) |
+
+So the spacer reserved 1051 device px of scroll while the pin lasted 841, and at
+release the section jumped **191px** down the screen before sitting still for the
+rest of the rail. Scaling `distance()` by the zoom for `end` alone made it worse
+(263px), because it then over-reserved by the same factor. There is no value that
+satisfies both constraints, because one number cannot be in two units.
+
+The fix is `position: sticky`, which is what Signature already used: the rail's
+height and the sticky child's height are both layout px, so the browser resolves
+the pinned range in the same coordinate space the layout is built in. It also
+removes the pin-spacer from the document entirely. The rail's travel is written
+from JS as `--exp-dist` (a measurement, in layout px) and defaults to `0px`, so
+the section is the right height even if the script never runs.
+
+Verified after the rewrite: **0.0px discontinuity** across the whole rail, strip
+travel 1:1 with scroll at both 1920 (zoomed) and 1536 (plain), and identical end
+states.
+
+#### What was verified
+
+A zoomed 1920 × 960 render and a plain 1536 × 768 render were compared element by
+element, converting device px back to layout px. Every measurement matched within
+**0.2px**: hero, hero type group, cup, signature heading, panels and sticky stage,
+fan and card, menu section, Experience rail and pin, Bean to Cup stage, the nav
+pill, body font size. No horizontal overflow at any width from 1280 to 2560. The
+theme probe flips on the same sections at both widths, and the reduced-motion path
+still reaches all six Experience panels.
+
+Residual: scrollbars mean the effective layout is ~1524px rather than 1536 on a
+real window — which is what 125% browser zoom did too, so it stays faithful to
+the view this was built against.
 
 ### CSS cascade layers — read this before adding a class
 
@@ -467,9 +633,9 @@ identified the real cause.
 
 #### Fitting the viewport
 
-The section is `min-h-[100svh]` with a flex column, so it occupies exactly one
-viewport. The reference has no such constraint — it ships two separate 900px
-sections, so the pacing problem never arises.
+The section is `min-h-[var(--screen-h)]` with a flex column, so it occupies
+exactly one viewport. The reference has no such constraint — it ships two
+separate 900px sections, so the pacing problem never arises.
 
 Getting there took two passes, and the second one mattered:
 
@@ -485,8 +651,12 @@ broke in practice.
 equals `1px` when there is room and shrinks below that:
 
 ```css
---u: clamp(0.55px, calc((100svh - 379px) / 476), 1px);
+--u: clamp(0.55px, calc((var(--screen-h) - 379px) / 476), 1px);
 ```
+
+(`--screen-h` rather than a raw `100svh`: the page magnifies itself above 1536,
+and a viewport unit is not compensated by `zoom`, so the raw form would size the
+deck for a taller viewport than the one it is in.)
 
 Every fan dimension is then a multiple of it — `calc(200 * var(--u))` for the
 card, `calc(308 * var(--u))` for the label offset, and so on. One value scales
@@ -521,21 +691,31 @@ so this section was designed from scratch in the language those three
 established: dark ground (`--color-coffee-dark`), display type in Plus Jakarta
 Sans 700, Fraunces for small accents, amber as the single accent.
 
-Vertical scroll drives horizontal travel. The section is pinned for the length
-of the strip's overflow and the track is translated by the same distance with
-`scrub`, so one scroll position maps to exactly one horizontal offset — there is
-no second scrollbar to fall out of sync.
+Vertical scroll drives horizontal travel. The section is held still for the
+length of the strip's overflow and the track is translated by the same distance
+with `scrub`, so one scroll position maps to exactly one horizontal offset —
+there is no second scrollbar to fall out of sync.
 
-The distance is read from the track's **live `scrollWidth`** inside a function
-rather than hardcoded, so adding or removing a panel lengthens the pin
-automatically instead of clipping the last one, and `invalidateOnRefresh`
-re-measures after fonts and images settle.
+The distance is read from the track's **live `scrollWidth`** rather than
+hardcoded, so adding or removing a panel lengthens the rail automatically
+instead of clipping the last one, and it is re-measured on every ScrollTrigger
+refresh so fonts and images that settle after load cannot leave it stale.
 
-`pin: true` with `pinSpacing` left on, which differs from Signature's approach
-deliberately: Signature uses CSS `position: sticky` because its stage is
-followed by content that needs to sit against it, whereas here GSAP's
-pin-spacer is what guarantees the document is the correct total height while
-pinned.
+**`position: sticky`, not GSAP's `pin`** — and this changed. The section shipped
+on `pin: true` with `pinSpacing` left on, which was the right choice at the time
+and is now impossible: GSAP writes a pin's spacer in layout px but measures its
+`end` in scroll px, and once the page magnifies itself those are different units.
+The full measurement is in
+[Page zoom](#the-pin-that-could-not-be-fixed); the short version is a 191px jump
+at release and no single `end` value that fixes it, because one number cannot be
+in two units. Sticky keeps the rail and the pinned range in the same coordinate
+space, and removes the pin-spacer from the document. It is now the same
+mechanism Signature uses, for the same reason.
+
+The rail (`.exp-rail`) IS the scroll distance: one screen plus `--exp-dist`,
+which JS writes in layout px from the measured overflow. It defaults to `0px`, so
+the section is exactly one viewport tall — correct, if untravelled — even if the
+script never runs.
 
 **The rhythm is the photographs' own.** Each panel is given the same *height*
 and its width follows from `aspect-ratio`, so the strip alternates narrow and
@@ -543,14 +723,17 @@ wide purely because the source images do. A fixed width would have flattened
 that into a grid.
 
 **Viewport fitting came free this time.** Everything derives from one token,
-`--exp-img-h: clamp(200px, 58svh, 620px)`, so a short viewport shrinks the
+`--exp-img-h: clamp(200px, 58svh, 620px)` — written against `--screen-h` so it
+means the same thing on a magnified page. A short viewport shrinks the
 photographs rather than pushing the section past the fold. Measured fit at
 1280/1440/1600 × 900, 1920 × 1080, and down to 1280 × 650.
 
-Under reduced motion there is no pin and no translation — but the strip becomes
+Under reduced motion there is no sticky and no translation — but the strip becomes
 a **native horizontal scroller**, which matters: without it the track would
-simply overflow and the later panels would be permanently unreachable. The
-reduced-motion path loses motion, not content.
+simply overflow and the later panels would be permanently unreachable. The rail
+also collapses to `height: auto`, since with no travel there is nothing for the
+sticky child to hold still for. The reduced-motion path loses motion, not
+content — verified to reach all six panels at both 1920 and 1536.
 
 #### The title that wrapped on its own
 
@@ -566,14 +749,18 @@ of viewport **height** (`--exp-img-h`, 58svh) while the title's font-size was a
 function of viewport **width** (`1.9vw`). Those two diverge on a short-and-wide
 viewport, producing narrow panels carrying large type — measured at 1920×650
 and 2560×700, `Evening Gatherings` needed 334px inside a 333px panel and
-overflowed.
+overflowed. That measurement predates the page-zoom change; the units now differ
+but the divergence it exposed is the same one, so the fix below still holds.
 
 The fix ties the type back to the panel rather than the viewport:
 
 ```css
 .exp-panel__meta   { container-type: inline-size; }
-.exp-panel__title  { font-size: min(clamp(1.375rem, 1.9vw, 1.875rem), 7.2cqi); }
+.exp-panel__title  { font-size: min(clamp(1.375rem, calc(0.019 * var(--screen-w)), 1.875rem), 7.2cqi); }
 ```
+
+(The width term is a multiple of `--screen-w` rather than a raw `1.9vw`, so it
+still means what it meant once the page magnifies itself.)
 
 `cqi` is relative to the query container, so the title can never outgrow the
 panel no matter how the two viewport axes are combined. Verified across nine

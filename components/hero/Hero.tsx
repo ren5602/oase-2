@@ -220,7 +220,7 @@ export default function Hero() {
       id="home"
       data-theme="dark"
       aria-label={`${SITE.name} — ${SITE.tagline}`}
-      className="themed relative isolate min-h-[100svh] overflow-hidden bg-coffee"
+      className="themed relative isolate min-h-[var(--screen-h)] overflow-hidden bg-coffee"
     >
       {/* ==================================================================
           Bean texture — bottom-left of centre, behind everything.

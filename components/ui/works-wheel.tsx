@@ -15,6 +15,7 @@ import * as React from "react";
 import Image from "next/image";
 
 import { cn } from "@/lib/utils";
+import { pageZoom } from "@/lib/viewport";
 
 export interface WorksWheelItem {
   /** Project name. Shown beside the front card and in the index. */
@@ -75,7 +76,10 @@ const NOTCH = 100;
 /** Firefox reports `deltaMode: 1` with the delta counted in lines. */
 const LINE_HEIGHT = 16;
 
-/** How much of a dragged pixel counts as one item. */
+/** How much of a dragged pixel counts as one item.
+    In LAYOUT px, which is why the drag handler divides the pointer's DEVICE px
+    by the page zoom before comparing against it — otherwise a magnified page
+    would drag the wheel 1.25x as far per pixel as the same gesture at zoom 1. */
 const DRAG_UNITS = 420;
 /** Fraction of the remaining distance closed each frame. 1 = no smoothing. */
 const EASE = 0.12;
@@ -394,7 +398,13 @@ export function WorksWheel({
         }}
         onPointerMove={(event) => {
           if (drag.current === null) return;
-          to(target.current + (drag.current - event.clientY) / DRAG_UNITS);
+          /* `clientY` is DEVICE px while `DRAG_UNITS` is a layout-px design
+             constant, so the delta is converted before it is compared against
+             it. Without the division a magnified page drags 1.25x as far per
+             pixel as the same gesture at zoom 1 — the wheel would overshoot
+             whatever the pointer did. */
+          const dy = (drag.current - event.clientY) / pageZoom();
+          to(target.current + dy / DRAG_UNITS);
           drag.current = event.clientY;
         }}
         onPointerUp={() => {

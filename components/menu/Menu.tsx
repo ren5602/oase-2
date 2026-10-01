@@ -97,13 +97,15 @@ export default function Menu() {
          scroll container, so nothing inside can scroll and no scrollbar
          appears. The reference does the same thing one level up, on its page
          root, which is why its own deck can stay `overflow: visible`. */
-      /* `min-h-[100svh]` with a flex column so the section fits exactly one
+      /* `min-h-[var(--screen-h)]` with a flex column so the section fits exactly one
          viewport at 900px and above, and can still grow if a viewport is very
          short. `justify-center` distributes the slack evenly, which is what
          keeps the deck optically centred rather than pinned to the top.
          The reference has no such constraint — its two decks are separate
-         900px sections, so the pacing problem never arises. */
-      className="themed relative flex min-h-[100svh] flex-col justify-center overflow-x-clip bg-cream py-16"
+         900px sections, so the pacing problem never arises.
+         `--screen-h` rather than `100svh` because the page is magnified on
+         wide screens; a raw viewport unit would overshoot by the zoom. */
+      className="themed relative flex min-h-[var(--screen-h)] flex-col justify-center overflow-x-clip bg-cream py-16"
     >
       <div className="shell flex flex-col items-center">
         <h2 id="menu-heading" className="display text-section text-center text-ink/70">

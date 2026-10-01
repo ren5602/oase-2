@@ -53,7 +53,10 @@ export default function BeanToCup() {
         Bean to Cup
       </h2>
 
-      <div className="h-[100svh] min-h-[36rem]">
+      {/* `--screen-h` rather than `100svh`: the page is magnified above 1536
+          and a raw viewport unit would overshoot by the zoom factor, leaving
+          the section taller than the screen it is supposed to fill. */}
+      <div className="h-[var(--screen-h)] min-h-[36rem]">
         <WorksWheel
           items={WHEEL_ITEMS}
           label="Bean to Cup"

@@ -95,7 +95,9 @@
      Section headings are a fixed 64px in the reference, held the same way. */
   --text-hero: 132px;
   --text-section: 64px;
-  --text-body: clamp(0.9375rem, 1.05vw, 1.0625rem);
+  /* Expressed against `--screen-w`, not `1.05vw`: a raw viewport unit would
+     overshoot by the page zoom. See the PAGE ZOOM block for the measurement. */
+  --text-body: clamp(0.9375rem, calc(0.0105 * var(--screen-w)), 1.0625rem);
   --text-label: 0.6875rem;
 
   /* --------------------------------------------------------------- motion
@@ -104,9 +106,12 @@
   --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
 
   /* ---------------------------------------------------------------- layout
-     Gutter scales across the desktop range only. */
-  --spacing-gutter: clamp(1.5rem, 5vw, 5rem);
-  --spacing-section: clamp(5rem, 12vh, 11rem);
+     Gutter scales across the desktop range only.
+
+     Both are written against the compensated screen tokens rather than `vw` /
+     `vh`: raw viewport units overshoot by the page zoom (see PAGE ZOOM). */
+  --spacing-gutter: clamp(1.5rem, calc(0.05 * var(--screen-w)), 5rem);
+  --spacing-section: clamp(5rem, calc(0.12 * var(--screen-h)), 11rem);
 
   /* Clearance for content anchored to the top of a section, so it sits below
      the fixed nav instead of underneath it.
@@ -120,6 +125,93 @@
      49px on a 650px one — 7px INSIDE the pill. A percentage of the viewport is
      the wrong unit for clearing a fixed element. */
   --nav-clearance: 5rem; /* 12px offset + 44px pill + 24px gap */
+}
+
+/* ============================================================================
+   PAGE ZOOM — the design is 1536 wide, magnified up to 1.25x
+
+   WHY THIS EXISTS
+
+   The composition was built and verified against a 1536 CSS-px viewport, which
+   is what 125% browser zoom produced on a 1920 monitor. At 100% zoom the
+   viewport is 1920 CSS px and the 1920 composition renders instead — a
+   different, much airier layout than the one the design was tuned to.
+
+   So the page LAYS OUT at 1536 and is magnified up to 1.25x by CSS `zoom` on
+   the root, which is the one mechanism that does this in a single declaration:
+   it scales the layout viewport itself, not a painted copy of it.
+
+     device width   zoom    layout width
+     1280 / 1440    1       1280 / 1440   (unchanged from before)
+     1536           1       1536
+     1600           1.042   1536
+     1920           1.25    1536          <- the target
+     2560           1.25    2048          (capped; gets more air)
+
+   ---------------------------------------------------------------------------
+   THE TRAP: `zoom` DOES NOT COMPENSATE VIEWPORT UNITS
+
+   Measured in Chrome 154 at 1920x1080 with `html { zoom: 1.25 }`:
+
+     100vw   -> 2400 device px   (25% too wide)
+     100svh  -> 1350 device px   (25% too tall)
+
+   A viewport unit is resolved against the OUTER viewport and then multiplied by
+   the effective zoom, so every `vw` / `svh` in the file would overshoot by
+   exactly the zoom factor. `--screen-h` and `--screen-w` divide that back out,
+   which makes them "one viewport, in LAYOUT px" — the unit the layout actually
+   wants.
+
+   EVERY viewport-relative length in this file must therefore be expressed as a
+   multiple of these two tokens. A raw `58svh` anywhere is a bug that only shows
+   above 1536.
+
+   ---------------------------------------------------------------------------
+   WHY THE @supports TEST IS A LITERAL
+
+   `@supports` cannot evaluate a `var()`, so the test repeats the 1536 literal
+   that `--zoom-ref` also carries. If you change one, change both.
+
+   The test is for `calc()` typed arithmetic (`100vw / 1px` yielding a unitless
+   NUMBER, which is what `zoom` needs). An engine without it — Firefox today —
+   fails the query and keeps the fallback, so it renders exactly what it
+   rendered before this block existed. Graceful, not broken.
+
+   Note also that this composes correctly with real browser zoom: at 150%
+   browser zoom on a 1920 window `100vw` is 1280, so `--zoom` clamps to 1 and
+   the two never multiply into a double zoom. */
+
+:root {
+  /* The design's own width, in CSS px, and the ceiling on the magnification.
+     1.25 x 1536 = 1920. */
+  --zoom-ref: 1536;
+  --zoom-max: 1.25;
+
+  /* Fallbacks, used as-is by engines that fail the @supports test below. */
+  --zoom: 1;
+  --screen-h: 100svh;
+  --screen-w: 100vw;
+}
+
+@supports (zoom: calc(100vw / (1536 * 1px))) {
+  :root {
+    /* `clamp()` because the same value has to serve three jobs: 1 below the
+       reference width, a fluid 1..1.25 across 1536..1920, and a hard 1.25
+       ceiling above it. */
+    --zoom: clamp(1, calc(100vw / (var(--zoom-ref) * 1px)), var(--zoom-max));
+
+    /* One viewport, in LAYOUT px — i.e. what `100svh` and `100vw` mean to the
+       layout once `zoom` has been applied to it. */
+    --screen-h: calc(100svh / var(--zoom));
+    --screen-w: calc(100vw / var(--zoom));
+  }
+}
+
+/* Unlayered on purpose: this must beat every layered rule, and it is the only
+   rule in the file whose failure mode is a silently different layout rather
+   than a wrong colour. */
+html {
+  zoom: var(--zoom);
 }
 
 /* ============================================================================
@@ -459,18 +551,21 @@
      scroll container, so sticky still works. `hidden` would have broken it.
 
      The track height is the reference's own: five viewport-heights of scroll
-     plus four 300px gaps, expressed as `600vh + 1200px` (container height)
-     which leaves `500vh + 1200px` of pinned travel. */
+     plus four 300px gaps, expressed as `6 * --screen-h + 1200px` (container
+     height) which leaves `5 * --screen-h + 1200px` of pinned travel.
+
+     `--screen-h` rather than `vh` because the page is magnified on wide
+     screens, and a raw viewport unit would overshoot by the zoom factor. */
 
   .sig-track {
     position: relative;
-    height: calc(600vh + 1200px);
+    height: calc(6 * var(--screen-h) + 1200px);
   }
 
   .sig-sticky {
     position: sticky;
     top: 0;
-    height: 100vh;
+    height: var(--screen-h);
     overflow: hidden;
   }
 
@@ -554,14 +649,18 @@
      box itself.
 
      379px is everything that is NOT the fan:
-       64 pad-top + 64 heading + 28 + 35 tabs + 40 + 40 + 44 controls + 64 pad-bottom
+        64 pad-top + 64 heading + 28 + 35 tabs + 40 + 40 + 44 controls + 64 pad-bottom
+
+     The budget is measured against `--screen-h`, not `100svh`: on a magnified
+     page a raw viewport unit would overshoot by the zoom factor and the deck
+     would be sized for a taller viewport than the one it is actually in.
 
      The floor of 0.55px keeps the fan legible on very short viewports; below
      ~640px tall the section will scroll rather than shrink further, which is
      the right trade. */
 
   .fan {
-    --u: clamp(0.55px, calc((100svh - 379px) / 476), 1px);
+    --u: clamp(0.55px, calc((var(--screen-h) - 379px) / 476), 1px);
 
     position: relative;
     width: calc(400 * var(--u));
@@ -748,9 +847,33 @@
      and a short viewport shrinks the photographs rather than pushing the
      section past the fold.
 
-     52svh was chosen so the tallest case fits: at 780px tall the image is
-     406px and the total comes to ~751px, leaving real breathing room.
-     `svh` rather than `vh` so browser chrome collapsing cannot clip it. */
+     58svh was chosen so the tallest case fits: at 780px tall the image is
+     452px and the total comes to ~687px, leaving real breathing room.
+     `svh` rather than `vh` so browser chrome collapsing cannot clip it —
+     that intent is preserved by `--screen-h`, which is `svh` divided by the
+     page zoom rather than a raw unit. */
+
+  /* The rail IS the scroll distance: one viewport of visible section, plus
+     `--exp-dist` of travel written from JS in LAYOUT px.
+
+     `position: sticky` on the child rather than GSAP's `pin: true`, because
+     the two are not interchangeable once the page magnifies itself. GSAP's pin
+     sizes its spacer in LAYOUT px but measures its `end` in SCROLL px, and
+     under zoom those disagree by the zoom factor — measured at 1920x960 with
+     `zoom: 1.25`, the spacer reserved 1051 device px while the pin lasted 841,
+     so the section jumped 191px at release and then sat still. No single `end`
+     value fixes it, because one number cannot be in two units. Sticky keeps
+     everything in layout px, where the browser resolves it correctly at every
+     zoom, and leaves no pin-spacer in the document at all.
+
+     `--exp-dist` defaults to 0 so the rail is exactly one viewport before JS
+     measures, which means the section is the right height even if the script
+     never runs. */
+  .exp-rail {
+    --exp-dist: 0px;
+    position: relative;
+    height: calc(var(--screen-h) + var(--exp-dist));
+  }
 
   .exp-pin {
     /* 58svh measured against the real budget: everything that is not the
@@ -758,15 +881,16 @@
        at 700px tall the image gets 406px and the section still fits with
        slack. The 620px ceiling keeps a single panel from dominating on very
        tall displays. */
-    --exp-img-h: clamp(200px, 58svh, 620px);
-    --exp-gap: clamp(1.5rem, 2.6vw, 3rem);
+    --exp-img-h: clamp(200px, calc(0.58 * var(--screen-h)), 620px);
+    --exp-gap: clamp(1.5rem, calc(0.026 * var(--screen-w)), 3rem);
 
-    position: relative;
+    position: sticky;
+    top: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: clamp(1.75rem, 4.5vh, 3.5rem);
-    height: 100svh;
+    gap: clamp(1.75rem, calc(0.045 * var(--screen-h)), 3.5rem);
+    height: var(--screen-h);
     /* Contains the very wide track. `clip` rather than `hidden`: the strip is
        translated by transform, and a scroll container here would give it a
        second, competing scrollbar. */
@@ -796,7 +920,7 @@
     display: flex;
     flex: none;
     flex-direction: column;
-    gap: clamp(0.75rem, 1.6vh, 1.25rem);
+    gap: clamp(0.75rem, calc(0.016 * var(--screen-h)), 1.25rem);
   }
 
   /* Width is derived, not declared: a definite height plus `aspect-ratio`
@@ -840,8 +964,11 @@
 
        `min()` against a container-relative cap ties the type back to the
        panel, so the relationship holds at every viewport instead of only the
-       ones tested. 7.2cqi keeps the longest title inside ~93% of its panel. */
-    font-size: min(clamp(1.375rem, 1.9vw, 1.875rem), 7.2cqi);
+       ones tested. 7.2cqi keeps the longest title inside ~93% of its panel.
+
+       The width term is a multiple of `--screen-w` rather than a raw `vw`, so
+       it means the same thing on a magnified page as it does on a plain one. */
+    font-size: min(clamp(1.375rem, calc(0.019 * var(--screen-w)), 1.875rem), 7.2cqi);
     line-height: 1.1;
     color: var(--color-cream);
     margin: 0;
@@ -1000,14 +1127,22 @@
     opacity: 1;
   }
 
-  /* Experience: with no pin and no GSAP translation, the strip becomes a
+  /* Experience: with no sticky and no GSAP translation, the strip becomes a
      native horizontal scroller so every panel stays reachable. Without this
      the track would simply overflow its section and the later panels would be
      permanently cut off — the reduced-motion path would lose content rather
      than just losing motion.
-     The section is also released to auto height, since it no longer needs to
-     fit one viewport for a pin to work. */
+
+     The section is also released to auto height, and the rail with it: with no
+     travel there is nothing for the sticky child to hold still for, and JS
+     never writes `--exp-dist`, so the rail would otherwise reserve a whole
+     empty viewport of scroll. */
+  .exp-rail {
+    height: auto;
+  }
+
   .exp-pin {
+    position: relative;
     height: auto;
     overflow-x: auto;
     overscroll-behavior-x: contain;

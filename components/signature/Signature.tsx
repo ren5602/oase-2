@@ -223,8 +223,12 @@ export default function Signature() {
           Opening beat. The heading is centred in its own full-height block
           before the pinned stage begins, which is what gives the section its
           slow, unhurried entrance.
+
+          `--screen-h` rather than `min-h-screen` (`100vh`): the page is
+          magnified above 1536, and a raw viewport unit would make this block
+          taller than the viewport it is meant to fill.
          --------------------------------------------------------------- */}
-      <div className="flex min-h-screen items-center justify-center px-6">
+      <div className="flex min-h-[var(--screen-h)] items-center justify-center px-6">
         {/* The heading is split per character for the reveal, which destroys
             its accessible name: the two lines concatenate to "TASTEOUR
             SIGNATURE", and `SplitText`'s per-word `aria-label`s are on plain
