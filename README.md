@@ -5,8 +5,8 @@ in Next.js from a Framer reference (`altruistic-pitch-532973.framer.app`). No
 Framer runtime, no iframe, no embedded frames — the design and motion language
 are reimplemented from scratch.
 
-> **Status: Step 6 of 9 complete.** Navbar, Hero, Signature, Menu, Experience
-> and Bean to Cup are built. See [Build order](#build-order) below.
+> **Status: Step 7 of 9 complete.** Navbar, Hero, Signature, Menu, Experience,
+> Bean to Cup and Gallery are built. See [Build order](#build-order) below.
 
 ---
 
@@ -142,8 +142,10 @@ components/
   hero/Hero.tsx           MAKE YOUR DAY + cup + bean texture + scroll cue
   signature/Signature.tsx five-phase pinned panel choreography
   menu/Menu.tsx           fan carousel with autoplay, tabs, keyboard
-  experience/Experience.tsx  pinned horizontal strip
+  experience/Experience.tsx  sticky horizontal strip
   bean-to-cup/BeanToCup.tsx  the six stages as a turnable wheel
+  gallery/Gallery.tsx     masonry grid, captions, column reveal
+  gallery/GalleryLightbox.tsx  the photo dialog
   ui/works-wheel.tsx      ring -> drum wheel, one rAF pass, own scroll
   ui/SplitText.tsx        per-character reveal primitive (aria-safe)
 
@@ -153,6 +155,8 @@ data/
   menu.ts                 drinks + foods items, categories, price format
   experience.ts           the five moments, true aspect ratios
   beanToCup.ts            the six stages, copy and alt text
+  gallery.ts              twelve photographs, measured ratios, optimal
+                          column partition, row-major reading order
 
 lib/
   useSectionTheme.ts      IntersectionObserver -> which theme is under the nav
@@ -385,7 +389,7 @@ Sections are built and reviewed **one at a time**.
 | 4 | Menu | ✅ complete |
 | 5 | Experience | ✅ complete |
 | 6 | Bean to Cup | ✅ complete |
-| 7 | Gallery | ⬜ not started |
+| 7 | Gallery | ✅ complete |
 | 8 | CTA | ⬜ not started |
 | 9 | Footer | ⬜ not started |
 
@@ -807,9 +811,15 @@ Two invariants replaced it:
    100px — verified by watching it turn on the tenth event and not the ninth.
 2. **The page must never become unscrollable.** The wheel only takes the gesture
    once it fills the frame, and only while it has somewhere to go. Before that —
-   and again at either end — the browser keeps the scroll. Bean to Cup is the last
-   section, so its top *is* the maximum scroll; the check is therefore that the
-   wheel stops consuming the event, not that the page moves.
+   and again at either end — the browser keeps the scroll.
+
+Invariant 1 was still wrong, in a way that only shows on a trackpad: accumulating
+continuously means one flick turns the whole sequence and then leaks its
+remainder into the page. Invariant 2 was also wrong once the Gallery existed —
+Bean to Cup stopped being the last section, and the "fills the frame" test only
+checked one edge. Both are documented in
+[The wheel that skipped the whole section](#the-wheel-that-skipped-the-whole-section)
+below, which is the current model.
 
 A third bug surfaced from the same area: releasing a drag was guarded by
 `if (target > 1)`, which skipped the entire `0..1` range — precisely the
@@ -918,6 +928,250 @@ drift and a constant 24px gap from 1280×650 to 1920×1080.
 The general lesson is in the token: a percentage of the viewport is the wrong
 unit for clearing a **fixed** element, because the two only coincide at one
 viewport size.
+
+#### The wheel that skipped the whole section
+
+The most serious bug in the build, and it was in the input model rather than the
+geometry.
+
+The wheel advanced one item per **100px of accumulated delta**, continuously. A
+mouse notch is 100px, so that reads correctly and every test passed — the only
+test drove it with `mouse.wheel(0, 2000)`, which is not a gesture any device
+produces.
+
+A **trackpad** does not send one event per notch. It sends a burst. Measured, a
+firm flick is ~1570px across ~16 events, and turning an item per event raced the
+drum through all six stages in ~150ms. The remaining 833px of that same gesture
+then had nowhere to go, so it **leaked to the page** and dumped the reader into
+the Gallery with the drum still spinning. That is the "it skips to Bean to Cup's
+end and lands in the Gallery" report:
+
+| event | delta | turned | target | leftover |
+|---|---|---|---|---|
+| 1 | 180 | 1 | 1 | 80 |
+| 2 | 200 | 2 | 3 | 80 |
+| 3 | 190 | 2 | 5 | 70 |
+| 4 | 170 | 1 | 6 | 0 |
+| 5–16 | 968 | — | 6 | **833px leaked to the page** |
+
+The fix is **one gesture, one stage**: a continuous stream turns exactly one
+item, and the rest of that stream is *swallowed* rather than leaked — the wheel
+has taken the gesture, so it must not hand its leftovers to the page. A 60ms
+pause starts a new gesture, so a mouse notch (a deliberate click, ~70ms+ apart)
+still steps one stage each.
+
+Two earlier attempts at telling the devices apart were written and thrown away,
+which is worth recording because both look reasonable:
+
+1. **Delta size.** Does not work. A flick's *opening* deltas are 180–200px —
+   **larger** than a mouse notch's 100px — so any size threshold either lets the
+   flick through or blocks the mouse.
+2. **Event timing, finely tuned.** Works in theory: a trackpad's cadence is
+   8–25ms and a fast mouse spin's is ~35ms, so a 30ms threshold separates them.
+   But the margin is a few milliseconds, and synthetic input cannot even
+   reproduce it — CDP has a ~46ms floor per dispatched event. A rule that cannot
+   be verified is not worth shipping.
+
+#### Two more bugs in the same handler, found while fixing that one
+
+**The wheel ate gestures from off-screen.** `inPlace` was `top <= 2`, a
+threshold, so once the section had scrolled *past* it stayed true — the reader
+deep in the Gallery still measured `top` at -928px, which satisfies `<= 2`.
+Measured: four wheel notches moved the page 400px instead of 800px, and
+scrolling back up felt like wading. It is now a band, released once the section
+is half gone.
+
+**But the first version of that band locked the reader out.** Tightening it to
+`top <= 2 && bottom >= innerHeight - 2` collapses to a **0px window** — the
+section is exactly one viewport tall, so `bottom >= innerHeight - 2` means
+`top >= 2`, and the two conditions together admit only perfect alignment. Since
+a 100px notch cannot land on `top === 0`, the wheel could never engage at all.
+Wheeling *up* out of the section (which lands `top` at about +100px) left the
+reader unable to get back in, because re-aligning is something only the wheel
+can do.
+
+So the band is `top <= 20% of the viewport` **and** the wheel closes the last
+few pixels itself — `align()`, a `scrollBy` of the remaining offset when it
+takes a gesture. Verified: parked 50, 100 and 180px short, one notch snaps to
+0.3px every time, and the round trip out and back re-engages and turns again.
+
+The general lesson: **a threshold that only tests one edge of a moving element
+is almost always wrong.** Test both, and give the element a way to correct
+itself rather than assuming it will be handed the perfect scroll position.
+
+### Gallery — original work, and the one section that just flows
+
+**Not in the reference.** Twelve photographs, laid out as a **masonry**: uniform
+column widths, heights following each photograph's own proportions, a caption
+under every card.
+
+**It deliberately owns no scroll mechanism**, and that is the design rather than
+an omission. Signature pins a five-phase choreography, Menu is a fan carousel,
+Experience a sticky horizontal strip, Bean to Cup a wheel — four different ways
+of holding the reader still. Twelve photographs do not need a fifth. They need to
+be shown.
+
+**This also makes the `#gallery` nav link work for the first time.** The entry
+has been in `SITE.nav` since the nav was built, but nothing in the document
+carried that id, so it had always gone nowhere.
+
+#### It was a justified grid first, and that was wrong
+
+The section shipped as a justified grid: each row shared a height, and because
+the row height was fixed, every width had to be **derived from** its
+photograph's ratio — `flex-grow: <ratio>`, so `wᵢ = W·rᵢ/Σr` and the height
+came out as `W/Σr`, identical for every tile in the row.
+
+That is a real trick and it was verified to 0.02px, but it is the wrong shape for
+the reference, which is a Pinterest-style masonry. A masonry reads the same
+relationship **from the other end**: the width is fixed and the height follows
+the ratio. Three declarations do it:
+
+```css
+.gal-cols  { display: flex; gap: var(--gal-gap); align-items: flex-start; }
+.gal-col   { flex: 1 1 0; min-width: 0; flex-direction: column; }
+.gal-frame { aspect-ratio: var(--gal-a); overflow: hidden; border-radius: 12px; }
+```
+
+`flex: 1 1 0` with `min-width: 0` makes every column exactly equal and stops a
+wide photograph from forcing its own column wider. `align-items: flex-start` is
+load-bearing too: without it the columns stretch to the tallest and the ragged
+bottom — which is the whole character of a masonry — disappears.
+
+Still no viewport units anywhere, so the section needed no work for the page
+zoom. Verified at six widths from 1280 to 2560: **ratio error 0.0001, no
+overflow**, and a zoomed 1920 render matching a plain 1536 one to within 2.4px
+(0.22%, which is sub-pixel rounding of the caption line box under the zoom
+multiplier, not drift).
+
+#### Why the columns are grouped the way they are
+
+A column's height is the sum of its photographs' rendered heights plus their
+captions and gaps, so **which photographs share a column decides how ragged the
+bottom edge is**. With twelve tiles there are 4¹² ≈ 16.7M partitions — few
+enough to solve *exactly* rather than greedily:
+
+| column | photographs | height @329px |
+|---|---|---|
+| 1 | pastry, sign, pour-over | 1177 |
+| 2 | workbench, espresso, beans | 1196 |
+| 3 | daylight, evening-room, latte | 1174 |
+| 4 | counter, from-above, menu-board | 1196 |
+
+Found by bitmask DP over subsets, minimising the tallest column. **Tallest
+1196px, ragged bottom 22px — 1.8%.** A greedy DOM-order fill leaves ~450px,
+which reads as a broken column rather than a deliberate one.
+
+The result is robust to the geometry changing, because every column holds exactly
+three tiles: the caption-and-gap overhead is identical across columns and cancels
+out of the spread. Only the ratios matter, so the partition survives the gap
+clamp resolving differently at different widths.
+
+#### Order is load-bearing in two directions at once
+
+`index` is **row-major** — the order a reader's eye travels, sorted by each
+tile's top edge with ties broken left to right. That is what puts `01 02 03 04`
+across the top row, and what makes the lightbox arrows land on the next number
+rather than the next tile in the DOM.
+
+But the DOM is built **column by column**, so array order and visual order cannot
+both be row-major. The resolution:
+
+- `GALLERY` is column-major — the order the DOM needs.
+- `GALLERY_COLUMNS` groups it for rendering.
+- `GALLERY_READING_ORDER` sorts it by `index` — row-major, and what the lightbox
+  walks.
+
+So the numerals, the visual flow and the arrow keys all agree, and the lightbox
+takes its list as a prop rather than importing one, which keeps the decision in a
+single place. Verified: opening tile `04` (which is DOM tile 10) and pressing
+right lands on `05`, then `06` — the numbers, not the DOM order.
+
+#### The three added photographs
+
+The nine originals covered the counter, espresso, beans, pour-over, sign, evening
+room, latte, overhead cup and menu board. Twelve tiles balance better than nine,
+so three were added from Unsplash — chosen to **add subjects rather than repeat
+them**:
+
+| photograph | adds | ratio |
+|---|---|---|
+| Morning Pastry | food — nothing else in the set is food | 1.25 |
+| The Workbench | the barista's tools: portafilters, ground coffee | 1.5009 |
+| Daylight Room | a bright room with people, against the dark evening one | 1.4585 |
+
+The first attempt at this picked three that *looked* varied by description but on
+inspection were near-duplicates of existing tiles — a second pour-over and the
+same counter shot from the same café. Worth recording because the ratios were
+fine and the balance was fine; only looking at the files caught it.
+
+Converted through `sharp` to WebP q82 at 1600px, matching the existing assets'
+encoding exactly. **+659 KB.**
+
+#### The lightbox, and the sizing trap
+
+Clicking a photograph opens it full-screen: Escape closes, arrows move through
+the twelve with wraparound, Tab is trapped, the backdrop closes but the
+photograph itself does not, and focus returns to the tile that opened it.
+
+**The sizing is the part that was wrong first.** The obvious form is
+`max-height: 100%` on the image — but a percentage `max-height` resolves against
+the parent's height, and the parent is a grid item sized by its own content, so
+it computes to `none` and constrains nothing. Measured: a 1600×2400 source
+rendered **2016px tall in a 960px viewport**. Definite constraints on the image
+itself are what work, because the browser then has two hard limits to fit between:
+
+```css
+.lb__img {
+  max-width: min(calc(var(--screen-w) - 16rem), 1280px);
+  max-height: calc(var(--screen-h) - 8rem);
+  width: auto; height: auto;
+}
+```
+
+`--screen-h` / `--screen-w` rather than `100vh` / `100vw`, because the page
+magnifies itself and a raw viewport unit would be 25% too large again.
+
+The **1280px ceiling is derived, not chosen**: the sources are 1600px wide and
+the zoom caps at 1.25, so 1280 layout px is exactly 1600 device px — the largest
+size at which a photograph is still 1:1 with its own file. Above that the
+lightbox would be upscaling. Verified across all twelve at four viewports: zero
+overflow, zero upscaling, ratio error 0.0000.
+
+#### Two smaller bugs the verification caught
+
+1. **Focus was silently dropped on close.** `close()` called `focus()` directly,
+   but at that moment the grid was still `inert` — and focusing into an inert
+   subtree is ignored without error. Measured: `activeElement` stayed on `<body>`
+   and the reader lost their place. The restore now runs in an effect *after* the
+   re-render that removes `inert`. The trigger is also passed into `open()` from
+   the click handler rather than read from `document.activeElement`, because the
+   latter depends on the browser having focused the button first — a programmatic
+   `.click()` does not, and the restore then had nothing to return to.
+
+2. **GSAP left `transform: translate(0px, 0px)` on the tiles.** An inline style
+   beats every stylesheet rule, so they could never take a CSS transform
+   afterwards — a silent trap for anything added later. The reveal now clears its
+   own `transform` on completion.
+
+#### The hover push moves the photograph, not the frame
+
+`.gal-tile:hover .gal-tile__img { transform: scale(1.04) }` — the photograph
+scales *inside* the clipped frame. Scaling the frame itself would move its own
+edges, so the gutter to its neighbour would open and close as the pointer crossed
+the column; the grid has to hold still.
+
+The reveal is per **column** rather than per row, because a masonry has no rows —
+the tiles in a visual row belong to four different columns, so a row-based
+trigger would have to pick one arbitrarily and would fire at four different
+scroll positions anyway.
+
+#### Adding or removing a photograph
+
+Both the column assignment and the indices have to be re-derived; neither can be
+guessed. The recipe is in the `data/gallery.ts` header: measure the ratio from
+the file header, solve the partition (exhaustively up to ~14 tiles), then assign
+`index` by sorting every tile by its top edge with ties left to right.
 
 ---
 

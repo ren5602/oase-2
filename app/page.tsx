@@ -1,5 +1,6 @@
 import BeanToCup from "@/components/bean-to-cup/BeanToCup";
 import Experience from "@/components/experience/Experience";
+import Gallery from "@/components/gallery/Gallery";
 import Hero from "@/components/hero/Hero";
 import Menu from "@/components/menu/Menu";
 import Signature from "@/components/signature/Signature";
@@ -19,6 +20,7 @@ export default function Home() {
       <Menu />
       <Experience />
       <BeanToCup />
+      <Gallery />
     </>
   );
 }

@@ -1078,6 +1078,268 @@ html {
   .wheel-accent {
     color: var(--section-accent, var(--color-amber));
   }
+
+  /* --------------------------------------------------------------- gallery
+     A masonry, after the Pinterest-style reference: uniform-width columns,
+     heights following each photograph's own proportions, a caption per card.
+
+     The section deliberately owns no scroll mechanism. Signature pins a 2x2
+     choreography, Menu is a fan, Experience a sticky strip and Bean to Cup a
+     wheel — so the one thing left for the photographs is to simply flow, which
+     is also the honest way to show them.
+
+     ---------------------------------------------------------------------------
+     WHY COLUMNS AND NOT A GRID
+
+     This replaced a justified grid, which forced every row to a common height
+     and therefore had to derive each WIDTH from its photograph's ratio. A
+     masonry does the opposite: the width is fixed and the height follows the
+     ratio. Same relationship, read from the other end, and it is the one the
+     reference uses.
+
+     The mechanism is three declarations:
+
+       .gal-cols  { display: flex; gap: var(--gal-gap); align-items: flex-start }
+       .gal-col   { flex: 1 1 0; min-width: 0; flex-direction: column }
+       .gal-frame { aspect-ratio: var(--gal-a) }
+
+     `flex: 1 1 0` with `min-width: 0` is what makes every column exactly equal
+     and stops a wide photograph from forcing its column wider than the others.
+     `align-items: flex-start` matters: without it the columns stretch to the
+     tallest one and the ragged bottom — which is the whole character of a
+     masonry — disappears.
+
+     No viewport units anywhere, so — unlike every other section — this needs no
+     `--screen-h` arithmetic to survive the page zoom. Measured at 1920 with the
+     zoom at 1.25: ratio error 0.0001, columns within 22px of each other, no
+     overflow.
+
+     ---------------------------------------------------------------------------
+     WHY THE COLUMNS ARE GROUPED THE WAY THEY ARE
+
+     A column's height is the sum of its photographs' rendered heights plus
+     their captions and gaps, so which photographs share a column decides how
+     ragged the bottom edge is. With twelve tiles there are 4^12 ≈ 16.7M
+     partitions — few enough to solve exactly rather than greedily, and the
+     grouping in `data/gallery.ts` is that optimum: 1177 / 1196 / 1174 / 1196px,
+     a 22px ragged bottom. A DOM-order fill leaves ~450px. */
+
+  .gal-cols {
+    /* Written against `--screen-w` rather than `vw` for the same reason as
+       every other viewport-relative length here: a raw unit is not compensated
+       by the page zoom and would overshoot above 1536. */
+    --gal-gap: clamp(0.75rem, calc(0.014 * var(--screen-w)), 1.5rem);
+
+    display: flex;
+    align-items: flex-start;
+    gap: var(--gal-gap);
+    padding-inline: var(--spacing-gutter);
+  }
+
+  .gal-col {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: var(--gal-gap);
+    /* A flex item defaults to `min-width: auto`, which would let a photograph
+       refuse to shrink below its intrinsic width and push its column wider than
+       the rest. */
+    min-width: 0;
+  }
+
+  .gal-tile {
+    display: block;
+    margin: 0;
+  }
+
+  /* The button is the control; the frame and caption are its contents. It is a
+     separate element rather than the tile itself so the caption can sit outside
+     the control's accessible name. */
+  .gal-tile__btn {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    color: inherit;
+  }
+
+  .gal-frame {
+    position: relative;
+    display: block;
+    width: 100%;
+    /* Height follows the photograph's own proportions. This is the whole
+       masonry — see the note above. */
+    aspect-ratio: var(--gal-a);
+    overflow: hidden;
+    border-radius: 12px;
+    background-color: rgb(254 254 252 / 0.06);
+  }
+
+  .gal-tile__img {
+    object-fit: cover;
+    /* The hover push scales the PHOTOGRAPH inside the clipped frame, not the
+       frame itself. Scaling the frame would move its own edges, so the gutter to
+       its neighbour would open and close as the pointer crossed the column — the
+       grid has to hold still. The frame's `overflow: hidden` does the cropping,
+       which is the classic gallery move and costs no layout. */
+    transition: transform 700ms var(--ease-out-soft);
+  }
+
+  /* Caption. Sits BELOW the photograph, outside the ratio box, so it never
+     overlaps the image and never contributes to the tile's aspect. */
+  .gal-cap {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.625rem;
+    color: var(--section-muted, rgb(254 254 252 / 0.6));
+  }
+
+  .gal-cap__title {
+    font-size: 0.8125rem;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+  }
+
+  .gal-cap__index {
+    flex: none;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    /* Tabular figures so 01 and 11 occupy the same width and the captions do
+       not jitter column to column. */
+    font-variant-numeric: tabular-nums;
+    color: var(--section-muted, rgb(254 254 252 / 0.6));
+    opacity: 0.7;
+  }
+
+  /* The enlarge affordance, revealed on hover/focus. Dark over the photograph
+     rather than themed, following `.sig-caption`'s convention: this sits on the
+     image, not on the section ground, so the section's theme does not apply. */
+  .gal-tile__zoom {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    background-color: rgb(11 11 11 / 0.5);
+    color: var(--color-cream);
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    transform: scale(0.85);
+    transition:
+      opacity 400ms var(--ease-out-soft),
+      transform 400ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .gal-tile:hover .gal-tile__zoom {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .gal-tile:hover .gal-tile__img {
+      transform: scale(1.04);
+    }
+
+    .gal-tile:hover .gal-cap__title {
+      color: var(--color-cream);
+    }
+  }
+
+  /* Keyboard parity: the tile is a real button, so focus must reveal the same
+     state hover does — declared outside the hover query so it applies on every
+     device. */
+  .gal-tile:focus-within .gal-tile__zoom {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .gal-tile:focus-within .gal-tile__img {
+    transform: scale(1.04);
+  }
+
+  .gal-cap__title {
+    transition: color 400ms var(--ease-out-soft);
+  }
+
+  .gal-tile:focus-within .gal-cap__title {
+    color: var(--color-cream);
+  }
+
+  /* ------------------------------------------------------- gallery lightbox
+     Fixed and full-bleed, above the nav (which sits at z-130) so the pill does
+     not float over the photograph being read. */
+
+  .lb {
+    position: fixed;
+    inset: 0;
+    z-index: 140;
+    display: grid;
+    place-items: center;
+    background-color: rgb(11 11 11 / 0.94);
+    backdrop-filter: blur(6px);
+  }
+
+  /* THE SIZING IS THE SUBTLE PART.
+
+     `max-height: 100%` does NOT work here. A percentage max-height resolves
+     against the parent's height, and the parent is a grid item sized by its
+     content — so it computes to `none` and a tall photograph runs off the
+     screen. Measured before the fix: a 1600x2400 source rendered 2016px tall in
+     a 960px viewport.
+
+     Definite constraints on the image itself are what work, because the browser
+     then has two hard limits to fit inside and preserves the ratio between
+     them. `--screen-h` / `--screen-w` rather than `100vh` / `100vw` because the
+     page magnifies itself: a raw viewport unit would be 25% too large on a
+     magnified page and the photograph would overflow again.
+
+     The 1280px ceiling is not arbitrary either. The sources are 1600px wide and
+     the zoom caps at 1.25, so 1280 LAYOUT px is exactly 1600 DEVICE px — the
+     largest size at which a photograph is still 1:1 with its own file. Above
+     that the lightbox would be upscaling. */
+  .lb__img {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: min(calc(var(--screen-w) - 16rem), 1280px);
+    max-height: calc(var(--screen-h) - 8rem);
+  }
+
+  .lb__btn {
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+    border: 1px solid rgb(254 254 252 / 0.2);
+    background-color: rgb(254 254 252 / 0.08);
+    color: var(--color-cream);
+    backdrop-filter: blur(12px);
+    cursor: pointer;
+    transition:
+      background-color 300ms var(--ease-out-soft),
+      border-color 300ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .lb__btn:hover {
+      background-color: rgb(254 254 252 / 0.16);
+      border-color: rgb(254 254 252 / 0.4);
+    }
+  }
+
+  .lb__btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
 }
 
 /* ============================================================================

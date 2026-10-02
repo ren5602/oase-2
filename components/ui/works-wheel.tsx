@@ -69,12 +69,34 @@ const INDEX = 0.04; // the index down the right-hand side
 const CULL = 1.6;
 
 /** Scroll distance, in pixels, that turns the wheel by one item.
-    A mouse notch is 100px in Chrome and Edge and 48px in Firefox (which
-    reports lines), so one notch is one item and a trackpad — which delivers a
-    stream of small deltas — takes a short flick. */
+
+    Also the floor on how much a gesture must travel before it counts at all,
+    which is what stops a resting finger's 2px twitch from flipping a stage. */
 const NOTCH = 100;
 /** Firefox reports `deltaMode: 1` with the delta counted in lines. */
 const LINE_HEIGHT = 16;
+
+/** A pause this long starts a new gesture.
+
+    ONE GESTURE TURNS ONE STAGE, and the gesture has to travel `NOTCH` px to
+    turn at all. That is the whole input model, and it is deliberately
+    device-agnostic: no attempt is made to tell a trackpad from a mouse wheel,
+    because every signal for that turned out to be unreliable. See the note in
+    the handler.
+
+    60ms sits between the two cadences that matter. A trackpad delivers its
+    momentum 8-25ms apart, so a whole flick reads as one gesture; a wheel notch
+    is a deliberate click that lands 70ms or more after the last one, so each
+    notch is its own gesture and a normal spin still steps stage by stage. */
+const GESTURE_GAP = 60;
+
+/** How close `turn` must be to `target` for the wheel to count as settled.
+
+    Looser than the 0.0005 the draw loop snaps at, because the question here is
+    "has the movement visually stopped", not "is it mathematically exact". At
+    `EASE` 0.12 the remaining gap falls under 1% of an item within ~36 frames
+    (~600ms), which is the point the drum reads as still. */
+const REST = 0.01;
 
 /** How much of a dragged pixel counts as one item.
     In LAYOUT px, which is why the drag handler divides the pointer's DEVICE px
@@ -278,12 +300,30 @@ export function WorksWheel({
      top reaches the top of the viewport — at which point the wheel fills the
      frame and taking the scroll is reasonable.
 
-     It exists because taking the scroll ANY EARLIER is a trap. The wheel is the
-     last thing on the page, so while the reader is still scrolling down into
-     it, the page scroll is the only way to finish arriving — and an ungated
+     It exists because taking the scroll ANY EARLIER is a trap. The wheel sits
+     before the Gallery, so while the reader is still scrolling down into it,
+     the page scroll is the only way to finish arriving — and an ungated
      handler would cancel every gesture and strand them with the section half
      off the top of the screen. Measured: the page stuck at the section top
      sitting 430px down, with no way to move it.
+
+     IT IS A BAND, NOT A THRESHOLD, and that distinction is a bug fix. Testing
+     only `top <= 2` left the flag true once the section had scrolled PAST —
+     the reader deep in the Gallery still had `top` at -928px, which satisfies
+     `<= 2` — so the off-screen wheel went on eating their gestures. Measured:
+     parked in the Gallery, four wheel notches moved the page 400px instead of
+     the 800px they should have, and scrolling back up felt like wading.
+
+     The band is `top <= 2` (the section has reached the top) AND the section
+     still covers at least the upper half of the viewport. That second bound has
+     to be generous rather than tight: the section is exactly one viewport tall,
+     so requiring `bottom >= innerHeight - 2` collapses the band to a 0px window
+     where `top` must land within 2px of zero — and a 100px wheel notch can
+     never hit that, so the wheel would never engage at all. Measured: scrolling
+     back up from the Gallery overshot to top=+640 and the wheel stayed dead.
+
+     Half a viewport is the right compromise: the drum is still the dominant
+     thing on screen, and the page has 480px of slack to land in.
 
      Read in a passive scroll listener rather than inside the wheel handler, so
      the handler itself stays free of layout reads. */
@@ -294,8 +334,30 @@ export function WorksWheel({
     if (!el) return;
 
     const read = () => {
-      // 2px of tolerance for fractional scroll offsets and subpixel layout.
-      inPlace.current = el.getBoundingClientRect().top <= 2;
+      const rect = el.getBoundingClientRect();
+      /* Both edges are tested against DEVICE px, which is what
+         `getBoundingClientRect` reports — `innerHeight` is device px too, so no
+         zoom conversion is needed and the comparison is like for like.
+
+         THE UPPER BOUND IS A FIFTH OF A VIEWPORT, and it is what lets the
+         reader back in. The first version used `top <= 2`, which failed in the
+         most ordinary case there is: wheeling UP out of the section scrolls the
+         page until `top` sits a notch past zero — measured at +100.3px — and
+         `top <= 2` is false there, so the wheel went dead with no way to
+         re-align, because re-aligning is something only the wheel can do. The
+         reader was locked out of a section they could see.
+
+         The handler closes the remaining gap itself: see `align()`, which pulls
+         the page the last few pixels when the wheel takes a gesture. So the
+         band only has to be wide enough to catch a plausible landing, and the
+         wheel does the rest.
+
+         The lower bound releases the reader as soon as the section is half
+         gone, which is what stops the wheel fighting them on the way to the
+         Gallery. */
+      inPlace.current =
+        rect.top <= window.innerHeight * 0.2 &&
+        rect.bottom >= window.innerHeight * 0.5;
     };
 
     read();
@@ -307,13 +369,12 @@ export function WorksWheel({
     };
   }, []);
 
-  /* Pixels of scroll carried toward the next item.
-
-     The wheel moves in whole items, so a gesture that does not yet add up to a
-     full notch has to be remembered rather than dropped — a trackpad delivers
-     its travel as a stream of small deltas and none of them is a notch on its
-     own. */
+  /* Pixels accumulated within the current gesture, whether that gesture has
+     already turned a stage, and when the last wheel event arrived. Together
+     these implement "one gesture, one stage" — see the note in the handler. */
   const carry = React.useRef(0);
+  const gestureTurned = React.useRef(false);
+  const lastWheelAt = React.useRef(0);
 
   // Native listener, because the wheel has to be cancellable — and it only
   // cancels while it still has somewhere to go, so the page scrolls on at
@@ -321,6 +382,31 @@ export function WorksWheel({
   React.useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
+
+    /** Moves the drum by whole items, clamped to the sequence. */
+    const step = (delta: number) => {
+      target.current = clamp(target.current + delta, 0, last + 1);
+    };
+
+    /* Snaps the page so the section's top sits exactly at the viewport's.
+
+       This exists because the reader can leave the section a few pixels out of
+       alignment and then want back in — wheeling UP from it lands `top` at
+       about +100px, and nothing else would ever close that gap, since the page
+       scroll is only moved by the reader. Left alone, the wheel would engage
+       while visibly misaligned, and the drum's perspective would sit off by the
+       same offset for the whole sequence.
+
+       A few pixels only: the band in `read()` means `top` is already within a
+       fifth of a viewport when this runs, so the jump is small and reads as the
+       section settling rather than as a scroll. */
+    const align = () => {
+      const top = el.getBoundingClientRect().top;
+      // Below this it is not worth a scroll; the eye cannot see the offset.
+      if (Math.abs(top) < 2) return;
+      // `scrollBy` is in DEVICE px, which is what `rect.top` reports.
+      window.scrollBy({ top, behavior: "auto" });
+    };
 
     const onWheel = (event: WheelEvent) => {
       /* Normalise `deltaMode` first. Chrome and Edge report pixels, but
@@ -335,16 +421,28 @@ export function WorksWheel({
             : 1;
       const px = event.deltaY * per;
 
-      // Carried pixels only mean anything in the direction they were going:
-      // hold 80px of downward travel and the first upward notch would be
-      // swallowed by it.
-      if (px * carry.current < 0) carry.current = 0;
-
-      const room =
-        px > 0 ? target.current < last + 1 : target.current > 0;
-
-      if (!inPlace.current || !room) {
+      /* Off the band: the page owns the gesture. */
+      if (!inPlace.current) {
         carry.current = 0;
+        gestureTurned.current = false;
+        return;
+      }
+
+      const room = px > 0 ? target.current < last + 1 : target.current > 0;
+
+      /* Past the end of the sequence the page takes over — but not until the
+         drum has visibly stopped.
+
+         Handing the gesture over while `turn` is still catching up to `target`
+         slides the section out from under its own animation: measured, the page
+         moved 95px in 50ms with the front card still rotating. The hold is
+         brief (the easing settles in a few hundred ms) and can only ever apply
+         here, because inside the sequence the wheel consumes the gesture
+         anyway. */
+      if (!room) {
+        carry.current = 0;
+        gestureTurned.current = false;
+        if (Math.abs(target.current - turn.current) > REST) event.preventDefault();
         return;
       }
 
@@ -352,21 +450,57 @@ export function WorksWheel({
          somewhere for the wheel to go in this direction. */
       event.preventDefault();
 
-      const steps = Math.trunc((carry.current + px) / NOTCH);
+      /* ---- one gesture, one stage ---------------------------------------
+         THE BUG THIS FIXES. The wheel used to turn one item per 100px of
+         accumulated delta, continuously. A trackpad does not send one event per
+         notch — it sends a burst. A firm flick measures ~1570px across ~16
+         events, so the drum raced through all six stages in ~150ms, and the
+         remaining 833px of that same gesture then had nowhere to go and leaked
+         to the page, dumping the reader into the Gallery with the drum still
+         spinning. That is the "it skips to the Gallery" report.
 
-      if (steps === 0) {
-        carry.current += px;
-        return;
+         The fix is to treat a continuous stream as ONE gesture that turns ONE
+         stage, and to swallow the rest of that stream rather than leaking it —
+         the wheel has taken the gesture, so it must not hand its leftovers to
+         the page.
+
+         Two earlier attempts at telling the devices apart were tried and both
+         failed, which is why this is deliberately device-agnostic:
+
+           1. Delta SIZE. Does not work: a flick's opening deltas are 180-200px,
+              LARGER than a mouse notch's 100px, so any threshold either lets
+              the flick through or blocks the mouse.
+           2. Event TIMING. Works in theory but is too fragile in practice. A
+              trackpad's 8-25ms cadence and a fast mouse spin's ~35ms cadence
+              leave only a few milliseconds of margin, and synthetic input
+              cannot even reproduce it — CDP has a ~46ms floor per dispatched
+              event, so the rule cannot be tested. A rule that cannot be
+              verified is not a rule worth shipping.
+
+         So the model is uniform: travel accumulates while events keep arriving,
+         the first `NOTCH` px turns exactly one stage, and the rest of that
+         gesture is swallowed. The pause then starts a fresh gesture. The
+         reader's intent is the same on both devices — "move me on one" — and
+         this delivers it, while still requiring real travel so a twitch does
+         nothing. */
+      const now = event.timeStamp;
+      if (now - lastWheelAt.current > GESTURE_GAP) {
+        carry.current = 0;
+        gestureTurned.current = false;
       }
+      lastWheelAt.current = now;
 
-      const next = clamp(target.current + steps, 0, last + 1);
-      const applied = next - target.current;
-      target.current = next;
-      /* Keep the remainder so a fast burst does not lose its tail — but only
-         when nothing was clamped away, since otherwise the leftover belongs to
-         travel that did not happen. */
-      carry.current =
-        applied === steps ? carry.current + px - steps * NOTCH : 0;
+      /* This gesture has already done its one turn. The rest of its travel is
+         swallowed rather than leaked — see above. */
+      if (gestureTurned.current) return;
+
+      carry.current += px;
+      if (Math.abs(carry.current) < NOTCH) return;
+
+      carry.current = 0;
+      gestureTurned.current = true;
+      align();
+      step(px > 0 ? 1 : -1);
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });
