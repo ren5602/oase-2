@@ -5,8 +5,8 @@ in Next.js from a Framer reference (`altruistic-pitch-532973.framer.app`). No
 Framer runtime, no iframe, no embedded frames — the design and motion language
 are reimplemented from scratch.
 
-> **Status: Step 7 of 9 complete.** Navbar, Hero, Signature, Menu, Experience,
-> Bean to Cup and Gallery are built. See [Build order](#build-order) below.
+> **Status: Step 8 of 9 complete.** Navbar, Hero, Signature, Menu, Experience,
+> Bean to Cup, Gallery and CTA are built. See [Build order](#build-order) below.
 
 ---
 
@@ -104,7 +104,6 @@ It also has no `backdrop-filter`, and its three bars sit at `x` 28–52, `y` 10 
 The reference covers only **Hero, Signature and Menu** (as two fan carousels).
 Experience, Bean to Cup, Gallery, CTA and Footer do not exist in it, so those are
 original work in the same visual language.
-
 ### Extracted tokens
 
 | Token | Value | Origin |
@@ -146,8 +145,10 @@ components/
   bean-to-cup/BeanToCup.tsx  the six stages as a turnable wheel
   gallery/Gallery.tsx     masonry grid, captions, column reveal
   gallery/GalleryLightbox.tsx  the photo dialog
+  cta/Cta.tsx             closing panel: text + two overlapping cards
   ui/works-wheel.tsx      ring -> drum wheel, one rAF pass, own scroll
   ui/SplitText.tsx        per-character reveal primitive (aria-safe)
+  ui/ChamferButton.tsx    the reference pill's silhouette, as a button
 
 data/
   site.ts                 nav labels, tagline, location, hours, contact
@@ -157,6 +158,7 @@ data/
   beanToCup.ts            the six stages, copy and alt text
   gallery.ts              twelve photographs, measured ratios, optimal
                           column partition, row-major reading order
+  cta.ts                  closing copy, the two actions, the two cards
 
 lib/
   useSectionTheme.ts      IntersectionObserver -> which theme is under the nav
@@ -390,7 +392,7 @@ Sections are built and reviewed **one at a time**.
 | 5 | Experience | ✅ complete |
 | 6 | Bean to Cup | ✅ complete |
 | 7 | Gallery | ✅ complete |
-| 8 | CTA | ⬜ not started |
+| 8 | CTA | ✅ complete |
 | 9 | Footer | ⬜ not started |
 
 ### Hero — measured, not estimated
@@ -1173,6 +1175,173 @@ guessed. The recipe is in the `data/gallery.ts` header: measure the ratio from
 the file header, solve the partition (exhaustively up to ~14 tiles), then assign
 `index` by sorting every tile by its top edge with ties left to right.
 
+### CTA — original work, adapted from a design reference
+
+**Not in the reference build.** The layout follows a separate design reference —
+a closing panel with a text block beside two overlapping cards on a warm
+gradient — adapted to this page rather than copied.
+
+What was kept, because it is the composition: the split, the two cards with the
+front overlapping the back one's lower-right, both rounded with the front
+elevated, and the warm low-contrast ground.
+
+What was changed, because the reference contradicts this page:
+
+| Reference | Here | Why |
+|---|---|---|
+| Sentence-case serif headline | Uppercase Plus Jakarta Sans 700, `--text-section` | Every heading on this page is the house display voice; Fraunces is an accent face and never a heading |
+| Dark rounded pill button | The nav pill's chamfer, extracted as `ChamferButton` | The page already has a button shape. Reusing it makes the overlay's CTA and the closing CTA read as one control |
+| Two oil paintings | Two photographs of the café | Every other section shows this café |
+| ~20px text link | Same look, 44px hit area | This project's documented interaction floor |
+
+**It also settles a dangling anchor.** The nav overlay has carried a "Visit
+OASE" button pointing at `#visit` since the nav was built, and nothing in the
+document has ever had that id — so it went nowhere. This section is where that
+anchor lands, which is the same win the Gallery recorded for `#gallery`. The
+Footer in step 9 takes `id="footer"` so the anchor stays stable.
+
+#### The button is dark, and that is a measured choice
+
+The obvious move was an amber plate, since amber is the palette's accent. It is
+the wrong move here, for two reasons:
+
+1. **Contrast.** Cream on ink measures **16.91:1**. The light-ground accent,
+   `--color-amber-deep`, measures 4.56:1 — passing, but the primary action on
+   the page should not be the weakest text on it.
+2. **It anchors the column.** The text side is entirely soft — a 70% ink heading
+   and muted body — so a dark plate gives the eye the one hard edge it needs.
+
+The reference agrees: its own button is a dark plate with light type, and so is
+the Menu's selected tab. Hover goes to amber with an ink label, which is the same
+warm flash the Hero's words use.
+
+#### The front card is not flush to the bottom
+
+Measured off the reference's two paintings against the box they sit in
+(529 × 528):
+
+| card | reference | here |
+|---|---|---|
+| back | 413 × 528 → 78% × 100%, flush top-left | same |
+| front | 221 × 215 → 42% × 41%, flush right, **4% clear of the bottom** | same |
+
+The 4% matters. The first attempt was flush to the bottom, and it reads as one
+card with a corner bitten out rather than two objects resting on a surface — the
+back card has to stay visibly a whole rectangle, with a strip of it showing
+beneath the front one. Verified at six widths: 21.8px of back card visible at
+1536, 17.9px at 1920.
+
+#### Both assets are stored pre-cropped
+
+```
+reading-room.webp   1200 x 1538   ratio 0.7802   back card
+in-hand.webp         700 x  683   ratio 1.0249   front card
+```
+
+Cropped at build time rather than with `object-position`, so the browser never
+has to decide what to cut and the subject is placed deliberately — the cup sits
+low in its frame because the card's lower-right corner is the part that overlaps
+the back card and would otherwise be hidden.
+
+`1200px` rather than the Gallery's `1600px`, and that is derived: the cluster
+caps at 544 layout px, so the back card is at most 424px, which at the 1.25 zoom
+ceiling is **530 device px**. 1200px is still 2.3× oversampled there, and the two
+files together are 185 KB.
+
+#### The two new photographs, and how they were chosen
+
+Every other photograph on the page is already spoken for — twelve in the Gallery
+immediately above, five in Experience, four in Signature, twelve in Menu. Reusing
+any would repeat an image within one scroll of itself. So two were added, chosen
+to **add subjects rather than restate them**: the set had no reading corner and
+no cup in someone's hands.
+
+**Two of the first candidates were rejected for being near-duplicates** — one was
+literally the same photograph already used as `gallery/12.webp`, the other
+repeated the "CAFE sign" subject of `gallery/01.webp`. This is the second time
+this section's assets were caught that way, and the lesson is now recorded in two
+places: **inspect the files, do not select on descriptions or ratios.** Both
+times the ratios and the balance were fine.
+
+#### The gradient uses two tokens that had no job
+
+`--color-cream-deep` (#f5f1e8) and `--color-surface` (#ece5d8) have been in the
+palette since the design system was written and were unused until this section.
+They are exactly what the reference's ground is made of: the same warm hue as
+`--color-cream`, a step or two down in luminance.
+
+It is a soft radial rather than a linear ramp, so the warmth gathers behind the
+cards instead of banding across the full width, and it is light rather than dark:
+the page ends on the Gallery's ink, and a second dark section would read as one
+long ending. So the nav pill inverts back to ink and the page closes the way it
+opened.
+
+#### One value is responsive; everything else is a percentage
+
+```css
+.cta-cluster {
+  --cta-h: clamp(20rem, calc(0.62 * var(--screen-h)), 34rem);
+  width: var(--cta-h);
+  aspect-ratio: 1;
+}
+```
+
+The cluster is a square whose size follows `--screen-h` — not `svh`, for the
+reason every other section here uses the token: a raw viewport unit is not
+compensated by the page zoom and would overshoot by 25% above 1536. Every card
+inside it is then a percentage, so the pair holds the reference's proportions at
+every size and this is the only value that has to be responsive at all.
+
+The 0.62 leaves the section its padding at every height, and the `20rem` floor
+keeps the cards legible on a short viewport. Measured: section 760 device px in a
+900 viewport, 929 in 1080, 671 in 780, and 619 in a 1280 × 720 window — it never
+overflows.
+
+#### What was verified
+
+**140 checks, 0 failures**, in a headless Chrome pass:
+
+- **Geometry at six widths** (1280–2560): cluster square and the expected size at
+  each, back card exactly 78% × 100%, front exactly 42% × 41%, front flush right
+  with a 4.00% bottom gap, cards overlapping, 12px radii, gradient present, grid
+  inside the viewport, **zero horizontal overflow**.
+- **Fit at seven viewport sizes** including 1280 × 720 and 1920 × 900.
+- **Zoom parity**: 1920 × 1125 (zoom 1.25) against 1536 × 900 (zoom 1) — the same
+  *layout* size, which is the comparison that means anything — matching to
+  **Δ0.00px** on cluster, both cards, grid position and section height.
+- **Images**: both load, neither upscaled, ratios true to 0.006.
+- **Contrast from the live DOM**, every colour resolved by painting it to a canvas
+  and reading back sRGB: heading 6.84:1 and body 6.24:1 against the gradient's
+  darkest stop, plate boundary 19.49:1, button label 19.49:1, secondary link
+  15.71:1.
+- **The anchor**: the overlay's "Visit OASE" scrolls to this section, the heading
+  clears the fixed nav, and the overlay closes.
+- **Keyboard**: two focusable actions, 56px and 44px hit heights, focus ring
+  present, correct `href`s.
+- **Reduced motion**: all five animated elements visible at `opacity: 1` with
+  **no leftover inline transform**, both actions reachable, both images rendered.
+- **Regressions**: Gallery still 4 columns and 12 tiles, Experience 5 panels, the
+  wheel 6 cards, no duplicate section ids, and **every nav anchor resolves** —
+  `#home #signature #menu #experience #gallery #visit`.
+
+#### Two bugs in the verification itself, worth recording
+
+Both were the same mistake the project already documents, made in the *test*
+rather than the code — which is exactly why it is worth writing down:
+
+1. **`getPropertyValue('--screen-h')` returns the unresolved `calc()` string**,
+   not a number, so every token assertion read `NaN`. The fix is to put the token
+   on a throwaway element and measure it.
+2. **The parity check compared 1920 × 900 against 1536 × 900.** Those lay out at
+   720 and 900 layout px respectively, so every height-dependent value differed
+   by exactly the ratio it should — and the test called it a failure. The valid
+   comparison is 1920 × 1125 against 1536 × 900, which are both 1536 × 900 in
+   layout px.
+
+The first pass reported 12 failures, none of which were real. **A test that mixes
+device px and layout px is the same bug as production code that does**, and it
+fails in the same direction: confidently, and by exactly the zoom factor.
+
 ---
 
 ## Placeholder content
@@ -1184,3 +1353,9 @@ must be replaced before launch:
 - address, phone, email
 - opening hours
 - Instagram URL
+- **`SITE.visit.maps`** — the CTA's primary button, built from the placeholder
+  address above. It is a field rather than derived in the component, so swapping
+  the address is one edit instead of a search
+
+The CTA's headline and body copy in `data/cta.ts` are also written placeholder
+copy — the reference has no CTA of its own to draw from.

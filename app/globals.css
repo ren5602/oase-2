@@ -1340,6 +1340,235 @@ html {
     opacity: 0.3;
     cursor: default;
   }
+
+  /* ------------------------------------------------------------------- cta
+     The closing panel: a text block beside two overlapping cards, on a warm
+     low-contrast ground.
+
+     NOT in the reference's section list — original work in the language Hero,
+     Signature and Menu established. The LAYOUT follows the design reference
+     (split, overlapping pair, warm gradient); the TYPE and the BUTTON follow
+     this page, because the reference contradicts it on both. The full list of
+     what was kept and what was changed is in `data/cta.ts`.
+
+     ---------------------------------------------------------------------------
+     THE GROUND IS TWO CURRENTLY-UNUSED TOKENS
+
+     `--color-cream-deep` (#f5f1e8) and `--color-surface` (#ece5d8) have been in
+     the palette since the design system was written and had no job until now.
+     They are exactly what the reference's gradient is made of: the same warm
+     hue as `--color-cream`, a step or two down in luminance.
+
+     It is a soft radial rather than a linear ramp, so the warmth gathers behind
+     the cards — where the reference puts it — instead of banding across the
+     full width. `circle at 72% 50%` sits under the cluster at every width,
+     because the cluster's centre is at a fixed fraction of the content box.
+
+     A gradient rather than a flat fill, and a light one rather than a dark
+     section: the page ends on Gallery, which is `data-theme="ink"`, and a
+     second dark section would read as one long ending. It also means this
+     section is `data-theme="light"`, so the nav pill inverts back to ink and
+     the page closes the way it opened. */
+
+  .cta-ground {
+    background-color: var(--color-cream);
+    background-image: radial-gradient(
+      78% 88% at 72% 50%,
+      var(--color-surface) 0%,
+      var(--color-cream-deep) 42%,
+      var(--color-cream) 100%
+    );
+  }
+
+  /* The two-column split.
+
+     `minmax(0, 30rem)` on the text track, not `1fr`: the heading is 64px
+     display type and its longest word sets an intrinsic minimum that `1fr`
+     would honour, letting the text column widen and push the cluster off
+     centre. The explicit track caps it instead.
+
+     `justify-content: center` because the reference's pair is CENTRED in its
+     frame rather than spread to the gutters — measured on a 1920 frame, the
+     text runs 405..845 and the cluster 997..1526, which is a centred 1121px
+     group with 265px of margin either side. Without this the two would sit at
+     the extremes of a 96rem shell and read as unrelated.
+
+     `max-width: 72rem` is a fit, not a taste. The widest the pair ever gets is
+     text 480 + gap 112.6 + cluster 544 = 1136.6px, at 2048 layout width; 72rem
+     is 1152px, so the grid never has to squeeze its own tracks. */
+  .cta-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 30rem) auto;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(2.5rem, calc(0.055 * var(--screen-w)), 7.5rem);
+    max-width: 72rem;
+    margin-inline: auto;
+  }
+
+  /* The square the cards are placed inside.
+
+     `--cta-h` is a UNIT LENGTH that caps at 34rem and shrinks on a short
+     viewport, so the whole cluster scales coherently rather than pushing the
+     section past the fold — the same mechanism `.fan` uses for the Menu deck,
+     and for the same reason: a fixed 544px cluster plus the heading is 700px
+     of content, which does not fit a 780px browser window once the section's
+     own padding is counted.
+
+     `--screen-h` rather than `svh`: the page magnifies itself above 1536 and a
+     raw viewport unit would overshoot by the zoom factor, sizing the cluster
+     for a taller viewport than the one it is in.
+
+     0.62 of the screen leaves the section its padding at every height, and the
+     20rem floor keeps the cards legible on a very short viewport; below roughly
+     700px tall the section scrolls rather than shrinking further, which is the
+     right trade.
+
+     `aspect-ratio: 1` on the box, then PERCENTAGES for everything inside it —
+     so the two cards hold the reference's proportions at every size and this is
+     the only value that has to be responsive. */
+  .cta-cluster {
+    --cta-h: clamp(20rem, calc(0.62 * var(--screen-h)), 34rem);
+
+    position: relative;
+    width: var(--cta-h);
+    height: var(--cta-h);
+  }
+
+  /* Both cards. `overflow: hidden` so the photograph is cropped to the rounded
+     frame rather than spilling past it, and `12px` from the house radius. */
+  .cta-card {
+    position: absolute;
+    overflow: hidden;
+    border-radius: 12px;
+    background-color: var(--color-cream-deep);
+  }
+
+  /* The back card: 78% x 100% at the top-left of the cluster.
+     0.78 is the reference's own proportion — its 413 x 528 plate. */
+  .cta-card--back {
+    top: 0;
+    left: 0;
+    width: 78%;
+    height: 100%;
+    /* One soft, wide layer. `--section-shadow` rather than a literal, because
+       16% black is right on cream and far too heavy on coffee-dark. */
+    box-shadow: 0 24px 60px -24px var(--section-shadow, rgb(11 11 11 / 0.16));
+  }
+
+  /* The front card.
+
+     Proportions read off the reference by measuring its two paintings against
+     the box they sit in (529 x 528):
+
+       back    413 x 528   ->  78% x 100%,  flush top-left
+       front   221 x 215   ->  42% x  41%,  flush RIGHT, 4% clear of the bottom
+
+     The 4% matters. The front card is NOT flush to the cluster's bottom: it
+     stops ~23px short of the back card's lower edge, so a strip of the back
+     painting stays visible beneath it. Flush-to-bottom was the first attempt
+     and it reads as one card with a corner bitten out, rather than two objects
+     resting on a surface — the back card needs to be visibly a whole rectangle. */
+  .cta-card--front {
+    right: 0;
+    bottom: 4%;
+    z-index: 1;
+    width: 42%;
+    height: 41%;
+    /* Two layers — a tight one for the contact edge and the wide one it shares
+       with the back card. Without the tight layer the front card reads as
+       pasted on rather than resting on top. */
+    box-shadow:
+      0 6px 16px -6px var(--section-shadow, rgb(11 11 11 / 0.16)),
+      0 24px 60px -24px var(--section-shadow, rgb(11 11 11 / 0.16));
+  }
+
+  .cta-card__img {
+    object-fit: cover;
+  }
+
+  /* The actions row. `flex-wrap` so the pair stacks rather than overflowing if
+     the text track is ever narrowed. */
+  .cta-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.75rem;
+  }
+
+  /* The secondary action.
+
+     A plain link in the reference, and a plain link here — but with a real hit
+     area. The reference's is a bare ~20px line of text; this carries 44px of
+     height, which is this project's documented interaction floor, without
+     changing how it looks.
+
+     `text-decoration` is animated rather than `border-bottom` so the rule
+     tracks the text's own baseline and descenders. */
+  .cta-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: var(--section-fg, var(--color-ink));
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    text-underline-offset: 5px;
+    transition:
+      color 300ms var(--ease-out-soft),
+      text-decoration-color 300ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .cta-link:hover {
+      color: var(--section-accent, var(--color-amber-deep));
+      text-decoration-color: currentColor;
+    }
+  }
+
+  /* Keyboard parity, declared outside the hover query so it applies on every
+     device — the same rule the gallery tiles and the fan controls follow. */
+  .cta-link:focus-visible {
+    color: var(--section-accent, var(--color-amber-deep));
+    text-decoration-color: currentColor;
+  }
+
+  /* The arrow travels; the label does not. Keeping the label still means the
+     link's own box never moves, so a pointer resting on it cannot fall off the
+     edge mid-animation. */
+  .cta-link__arrow {
+    display: inline-block;
+    margin-left: 0.5rem;
+    transition: transform 300ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .cta-link:hover .cta-link__arrow {
+      transform: translateX(0.25rem);
+    }
+  }
+
+  .cta-link:focus-visible .cta-link__arrow {
+    transform: translateX(0.25rem);
+  }
+
+  /* Below the desktop range the pair stops fitting side by side and stacks.
+     This is NOT a mobile breakpoint — the project is desktop-only — it is the
+     floor of the supported 1280..2560 range plus a little room, and it exists
+     because the cluster is a fixed square while the text track is capped: at
+     1280 the two together need 480 + 544 + 120 = 1144px of content box, which
+     the 1280 shell provides only just. Stacking below 1024 keeps the cluster
+     centred and full-size rather than squashed. */
+  @media (max-width: 1023px) {
+    .cta-grid {
+      grid-template-columns: minmax(0, 1fr);
+      justify-items: center;
+      text-align: center;
+    }
+
+    .cta-actions {
+      justify-content: center;
+    }
+  }
 }
 
 /* ============================================================================

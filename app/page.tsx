@@ -1,4 +1,5 @@
 import BeanToCup from "@/components/bean-to-cup/BeanToCup";
+import Cta from "@/components/cta/Cta";
 import Experience from "@/components/experience/Experience";
 import Gallery from "@/components/gallery/Gallery";
 import Hero from "@/components/hero/Hero";
@@ -21,6 +22,7 @@ export default function Home() {
       <Experience />
       <BeanToCup />
       <Gallery />
+      <Cta />
     </>
   );
 }

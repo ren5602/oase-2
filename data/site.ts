@@ -22,6 +22,14 @@ export type SiteInfo = {
   nav: NavLink[];
   visit: {
     addressLines: string[];
+    /**
+     * A maps link, built from the placeholder address below.
+     *
+     * Kept as a field rather than derived in the component, so that swapping
+     * the placeholder address for the real one is a single edit here instead of
+     * a search for every place the address is printed.
+     */
+    maps: string;
     hours: { days: string; time: string }[];
     instagram: { handle: string; url: string };
     email: string;
@@ -49,6 +57,7 @@ export const SITE: SiteInfo = {
   /* PLACEHOLDER — none of this exists in the reference. */
   visit: {
     addressLines: ["Jl. Senopati No. 24", "Kebayoran Baru", "Jakarta 12190"],
+    maps: "https://www.google.com/maps/search/?api=1&query=Jl.%20Senopati%20No.%2024%2C%20Kebayoran%20Baru%2C%20Jakarta%2012190",
     hours: [
       { days: "Mon – Thu", time: "07.00 – 22.00" },
       { days: "Fri – Sat", time: "07.00 – 24.00" },

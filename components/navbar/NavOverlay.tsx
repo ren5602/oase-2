@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import ChamferButton from "@/components/ui/ChamferButton";
 import { SITE } from "@/data/site";
 
 /**
@@ -134,29 +135,12 @@ export default function NavOverlay({ open, onClose }: NavOverlayProps) {
             style={footerMotion(open, 420)}
           >
             {/* The reference's chamfer, reused as the button shape so the
-                button and the pill read as one system. */}
-            <a
-              href="#visit"
-              onClick={onClose}
-              data-nav-focus
-              className="press group relative inline-flex h-14 items-center justify-center px-9"
-            >
-              <svg
-                viewBox="0 0 200 56"
-                preserveAspectRatio="none"
-                className="absolute inset-0 h-full w-full"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <path
-                  d="M 200 4 C 200 1.791 198.209 0 196 0 L 4 0 C 1.791 0 0 1.791 0 4 L 0 37 L 11.216 54.186 C 11.955 55.318 13.215 56 14.566 56 L 200 56 Z"
-                  className="fill-amber transition-colors duration-300 group-hover:fill-cream"
-                />
-              </svg>
-              <span className="display relative text-sm text-ink">
-                Visit OASE
-              </span>
-            </a>
+                button and the pill read as one system. The plate colours are
+                the component's defaults — this is the dark ground they were
+                chosen for. */}
+            <ChamferButton href="#visit" onClick={onClose} data-nav-focus>
+              Visit OASE
+            </ChamferButton>
 
             <p className="serif text-lg text-cream">{SITE.tagline}</p>
           </div>
