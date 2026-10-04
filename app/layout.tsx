@@ -63,7 +63,18 @@ export default function RootLayout({
         {/* Fixed chrome. Sits above every section and never scrolls. */}
         <Navbar />
 
-        <main id="main">{children}</main>
+        {/* NO `<main>` HERE, deliberately.
+            A `<footer>` nested inside `<main>` does NOT receive the implicit
+            `contentinfo` landmark role — the spec scopes `contentinfo` to a
+            body-level element. So the page would have no footer landmark at
+            all, and the skip link's `#main` target would be the only thing the
+            wrapper was buying.
+
+            The `<main>` therefore lives in `page.tsx`, around the sections and
+            NOT around the footer, which is what lets `<Footer />` be a direct
+            child of `<body>` and become a real landmark. Composition stays in
+            `page.tsx`, which is where it already was. */}
+        {children}
       </body>
     </html>
   );

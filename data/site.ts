@@ -65,6 +65,6 @@ export const SITE: SiteInfo = {
     ],
     instagram: { handle: "@oase.cafe", url: "https://instagram.com" },
     email: "hello@oase.cafe",
-    phone: { label: "+62 21 5555 0199", href: "tel:+622155550199" },
+    phone: { label: "+62XXXXXXXXX", href: "tel:+62XXXXXXXXX" },
   },
 };

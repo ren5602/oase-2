@@ -5,8 +5,9 @@ in Next.js from a Framer reference (`altruistic-pitch-532973.framer.app`). No
 Framer runtime, no iframe, no embedded frames — the design and motion language
 are reimplemented from scratch.
 
-> **Status: Step 8 of 9 complete.** Navbar, Hero, Signature, Menu, Experience,
-> Bean to Cup, Gallery and CTA are built. See [Build order](#build-order) below.
+> **Status: complete — 9 of 9.** Navbar, Hero, Signature, Menu, Experience,
+> Bean to Cup, Gallery, CTA and Footer are built. See [Build order](#build-order)
+> below.
 
 ---
 
@@ -146,6 +147,7 @@ components/
   gallery/Gallery.tsx     masonry grid, captions, column reveal
   gallery/GalleryLightbox.tsx  the photo dialog
   cta/Cta.tsx             closing panel: text + two overlapping cards
+  footer/Footer.tsx       hours, address, contact, back to top
   ui/works-wheel.tsx      ring -> drum wheel, one rAF pass, own scroll
   ui/SplitText.tsx        per-character reveal primitive (aria-safe)
   ui/ChamferButton.tsx    the reference pill's silhouette, as a button
@@ -159,6 +161,10 @@ data/
   gallery.ts              twelve photographs, measured ratios, optimal
                           column partition, row-major reading order
   cta.ts                  closing copy, the two actions, the two cards
+
+NOTE: the Footer has NO data file, and that is deliberate — it is chrome, not
+content. It reads `SITE` directly, exactly as `Navbar` and `NavOverlay` do.
+Adding `data/footer.ts` would have meant a second place for the same facts.
 
 lib/
   useSectionTheme.ts      IntersectionObserver -> which theme is under the nav
@@ -393,7 +399,7 @@ Sections are built and reviewed **one at a time**.
 | 6 | Bean to Cup | ✅ complete |
 | 7 | Gallery | ✅ complete |
 | 8 | CTA | ✅ complete |
-| 9 | Footer | ⬜ not started |
+| 9 | Footer | ✅ complete |
 
 ### Hero — measured, not estimated
 
@@ -1342,6 +1348,183 @@ The first pass reported 12 failures, none of which were real. **A test that mixe
 device px and layout px is the same bug as production code that does**, and it
 fails in the same direction: confidently, and by exactly the zoom factor.
 
+### Footer — original work, and the end of the build
+
+**Not in the reference.** This one is worth stating precisely, because the
+reference's silence here is total: the Framer build has **no `<footer>`, no
+`<nav>`, and exactly one `<a>` in its page content** (Framer's own fixed
+"Made in Framer" badge). No address, no hours, no phone, no email, no social
+handle, no copyright line, no legal text. The page ends after its second fan
+carousel and simply stops.
+
+#### What justifies it: two fields that were dead data
+
+`SITE.visit` has carried three opening-hours rows and a phone number since the
+first commit. Auditing what actually rendered them:
+
+| field | rendered where, before this section |
+|---|---|
+| `addressLines` | the overlay, and the CTA's maps link |
+| `maps` | the CTA's primary button |
+| `hours[0]` | the overlay — one row only |
+| **`hours[1]`** | **nowhere** |
+| **`hours[2]`** | **nowhere** |
+| **`phone`** | **nowhere** |
+
+So the footer is not decoration. It is where the full hours table and the phone
+number finally reach the page, and that is its reason to exist. It also gives
+`SITE.statement` — the line printed on the reference cup — its first visible
+home on the page proper; until now it only appeared in the overlay and in the
+hero's screen-reader text.
+
+#### The height is a threshold, and the first attempt got the arithmetic wrong
+
+This is the most useful thing to record from this section.
+
+`useSectionTheme` puts its probe at **y=34px** — the pill's centre — and the
+theme band runs from there down to 34% of the viewport. At maximum scroll the
+footer's bottom sits on the viewport's bottom edge, so:
+
+```
+footerTop = viewportH - footerH
+the footer owns the pill   <=>  footerTop <= 34
+                           <=>  footerH   >= viewportH - 34
+```
+
+At 900px tall that is **866px — 96% of the viewport.** Anything shorter and the
+page's last screen is *split*: the footer visible, but the strip above it still
+the CTA's cream and the pill still reporting `light` — correctly, since the pill
+genuinely is over cream, but not an ending.
+
+**The first attempt used `0.72 × --screen-h`, reasoning that the band's lower
+edge (34% of the viewport) was the binding constraint.** It is not. The probe
+line decides, and it sits 34px from the *top*. Measured at 1536×900, 0.72 × 900
+= 648px left the footer **252px short** of the probe, and the pill never
+inverted. A sweep of eight footer heights confirmed the crossover sits exactly
+at `viewportH - 34`:
+
+| footer height | ratio | footerTop at max scroll | pill |
+|---|---|---|---|
+| 560 | 0.622 | 340.2 | ink (over cream) |
+| 648 | 0.720 | 252.2 | ink (over cream) |
+| 760 | 0.844 | 140.2 | ink (over cream) |
+| 866 | 0.962 | 34.2 | ink (over cream) |
+| 900 | 1.000 | 0.2 | **light (over ink)** |
+
+So the footer is **one full viewport** — `min-height: var(--screen-h)`. That is
+also the honest reading of the design: it is the page's closing panel, not a
+strip tacked onto the end. `min-height` rather than `height`, so a short
+viewport grows the section and scrolls instead of clipping the columns.
+
+The threshold is zoom-invariant, which is why the token works: both sides scale
+by the same factor, so `footerH_device >= viewportH_device - 34` reduces to
+`footerH_layout >= --screen-h` in layout px.
+
+Verified by walking backwards from the bottom in 40px steps: the pill flips
+between `footerTop 40.2` and `footerTop 0.2` device px, which brackets the probe
+at 34 exactly.
+
+#### `data-theme="ink"`, and why not `dark`
+
+`dark` is the Hero's ground (`--color-coffee`), and it is the obvious bookend
+choice. It is the wrong one, for two measured reasons:
+
+1. **Contrast.** On coffee, `--section-accent` (amber) measures **3.44:1** —
+   which the design system documents as "large text only". A footer is small
+   text and links. On ink the same accent measures **7.50:1**.
+2. **The Hero owns coffee.** It is the one place that colour appears. Reusing it
+   at the other end dilutes the hero rather than bookending it, and
+   coffee → cream → … → cream → coffee would imply a symmetry the page does not
+   otherwise have.
+
+Ink also pairs with the Gallery, so the page's two darkest moments are the same
+colour.
+
+#### A `<footer>` inside `<main>` is not a footer
+
+`layout.tsx` wrapped every child in `<main id="main">`. A `<footer>` nested
+inside `<main>` **does not receive the implicit `contentinfo` role** — the spec
+scopes `contentinfo` to a body-level element. So the page would have had no
+footer landmark at all.
+
+The `<main>` therefore moved to `page.tsx`, around the seven sections and *not*
+around the footer, which is what lets `<Footer />` be a direct child of `<body>`
+and become a real landmark. Composition stayed in one file and the skip link's
+`href="#main"` still resolves. Verified: `footerRole: "contentinfo"`,
+`footerInsideMain: false`.
+
+#### It is a server component, on purpose
+
+No `"use client"`, no hooks, no GSAP. Every other section on this page owns some
+piece of choreography and the footer owns none — the reader has finished. Links
+get CSS-only hover and focus transitions, and back-to-top is a plain anchor.
+
+**Back to top is an anchor, not a scroll handler.** `href="#home"` plus
+`scroll-behavior: smooth` on the root — which also makes the overlay's links and
+the hero's scroll cue glide, for free. The global reduced-motion block already
+overrides that to `auto !important`, so the preference is honoured without a
+single line of JavaScript. Verified: `smooth` by default, `auto` under reduced
+motion, and the click travels 14469 → 0.
+
+#### The defect the layout checks could not see
+
+The contact links were built with the 44px interaction floor on the `<li>`
+rather than on the `<a>`. Every layout assertion passed — the column was exactly
+the right height, everything was aligned, nothing overflowed — while the anchors
+themselves were **21px tall**, one line of `--text-body`.
+
+It only surfaced when the hit areas were measured directly. A layout check
+measures boxes, and the box was correct; the *interactive* box was not. The floor
+now sits on the anchors, and the list gap dropped from 8px to 4px because the
+rhythm comes from the hit areas rather than from space between them.
+
+#### What was verified
+
+**116 checks, 0 failures** in the main headless pass, plus **13** in an isolated
+zoom-parity run:
+
+- **Geometry at six widths** (1280–2560): no horizontal overflow, no JS errors,
+  `min-height` equal to `--screen-h` at every width, grid and bar inside the
+  footer and inside the viewport, bar below the grid and pinned to the floor.
+- **The threshold at seven viewport sizes**, including 1280×720 and 2560×1440:
+  `footerTop <= 34` device px at maximum scroll in every case, and the pill
+  actually rendering the dark-ground treatment.
+- **Contrast from the live DOM**, every colour painted to a canvas and read back
+  as sRGB: wordmark **16.91:1**, hours values **16.91:1**, accent labels
+  **7.50:1**, and all muted text **6.71:1**. Worst case 6.71:1.
+- **Semantics**: footer role `contentinfo`, main role `main`, footer a body child
+  and not inside main, skip link resolving, a real `<dl>` with 3 `<dt>`/`<dd>`
+  pairs, `<address>` used, one labelled `<nav>`.
+- **The previously-dead fields**: phone, `hours[1]`, `hours[2]` all confirmed
+  present in the rendered footer text.
+- **Links**: all in-page anchors resolve, both external links carry
+  `rel="noreferrer noopener"`, `tel:` is well-formed E.164, `mailto:` correct, no
+  bare `#`, and **every hit area >= 44px**.
+- **Focus**: ring present on all three link types.
+- **Reduced motion**: `scroll-behavior: auto`, nothing hidden, text visible,
+  back-to-top still an anchor.
+- **Zoom parity**: 1920×1125 (zoom 1.25) against 1536×900 (zoom 1) — matching to
+  **Δ0.00px** on footer height and grid position, Δ0.39px worst case on the bar.
+- **Regressions**: 7 sections, no duplicate ids, all overlay anchors resolve, the
+  footer nav mirroring `SITE.nav` exactly, Gallery 4×12, Experience 5, wheel 6,
+  Signature 4, Menu 6.
+
+#### One harness failure worth noting
+
+The zoom-parity section timed out twice with a CDP `ProtocolError`. The page is
+now **14,469px** tall with GSAP ScrollTriggers on six sections, and the suite was
+opening two such pages at once. It was fixed by measuring one page at a time with
+smooth scrolling disabled — and the *test* was the problem, not the page.
+
+Two assertions in this suite also had to be corrected rather than the code:
+
+1. Comparing the footer's whole anchor set against the overlay's. They are not
+   the same list: the overlay has a sixth anchor ("Visit OASE" → `#visit`) and
+   the footer has "Back to top" → `#home`. The footer's `<nav>` mirrors
+   `SITE.nav`'s five links exactly, which is the real invariant.
+2. A leftover placeholder line in the link check referenced `document` from
+   Node, where it does not exist.
+
 ---
 
 ## Placeholder content
@@ -1359,3 +1542,6 @@ must be replaced before launch:
 
 The CTA's headline and body copy in `data/cta.ts` are also written placeholder
 copy — the reference has no CTA of its own to draw from.
+
+The footer's `© <year> OASE` line bakes the year in at build time, which is
+correct for a build-and-deploy site, and is placeholder like the rest.

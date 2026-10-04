@@ -229,6 +229,15 @@ html {
     -webkit-text-size-adjust: 100%;
     /* Anchor targets must not hide under the fixed nav. */
     scroll-padding-top: 6rem;
+    /* Makes every in-page anchor glide rather than jump — the nav overlay's
+       links, the hero's scroll cue, and the footer's "back to top".
+
+       Declared here rather than as a per-link scroll handler so it costs no
+       JavaScript and covers anchors added later for free. The global
+       reduced-motion block overrides it to `auto !important`, which is exactly
+       what that preference asks for: the jump still happens, it just stops
+       animating. */
+    scroll-behavior: smooth;
   }
 
   html,
@@ -1567,6 +1576,334 @@ html {
 
     .cta-actions {
       justify-content: center;
+    }
+  }
+
+  /* ---------------------------------------------------------------- footer
+     The closing section.
+
+     NOT in the reference: the Framer build has no `<footer>`, no `<nav>`, no
+     `<a>` in its page content and no address, hours, phone, email, social or
+     copyright text at all. It ends after its second carousel. So this is
+     original work in the language the rest of the page established.
+
+     Its reason to exist is concrete: `SITE.visit` has carried three
+     opening-hours rows and a phone number since the first commit, and
+     `hours[1]`, `hours[2]` and `phone` have never rendered anywhere. This is
+     where they finally reach the page.
+
+     ---------------------------------------------------------------------------
+     THE HEIGHT IS A THRESHOLD, AND IT IS A FULL VIEWPORT
+
+     `useSectionTheme` puts its probe at y=34px — the pill's centre — and the
+     theme band runs from there down to 34% of the viewport. At maximum scroll
+     the footer's bottom sits on the viewport's bottom edge, so:
+
+       footerTop  = viewportH - footerH
+       footer owns the pill   <=>  footerTop <= 34
+                              <=>  footerH   >= viewportH - 34
+
+     At 900px tall that is **866px**, or 96% of the viewport. So anything less
+     than a full-height footer leaves the page's LAST SCREEN SPLIT: the footer
+     visible, but the strip above it still the CTA's cream and the pill still
+     reporting `light` — correctly, since the pill genuinely is over cream, but
+     not an ending.
+
+     A first attempt used `0.72 x --screen-h` on the assumption that the band's
+     LOWER edge was the binding constraint. It is not; the probe line decides,
+     and it sits 34px from the TOP. Measured at 1536x900, 0.72 x 900 = 648px
+     left the footer 252px short of the probe and the pill never inverted. A
+     sweep of eight footer heights confirmed the crossover is exactly at
+     viewportH - 34.
+
+     So the footer is ONE FULL VIEWPORT. That is also the honest reading of the
+     design: it is the page's closing panel, not a strip tacked onto the end.
+
+     `min-height` rather than `height`, so a short viewport grows the section and
+     scrolls instead of clipping the columns.
+
+     `--screen-h` rather than `svh`, as everywhere else here — a raw viewport
+     unit is not compensated by the page zoom and would overshoot by 25% above
+     1536. The threshold is zoom-invariant for the same reason: both sides scale
+     by the zoom factor. */
+  .foot {
+    display: flex;
+    flex-direction: column;
+    min-height: var(--screen-h);
+    background-color: var(--color-coffee-dark);
+    padding-block: clamp(3rem, calc(0.09 * var(--screen-h)), 6rem);
+  }
+
+  /* The inner column is what pins the bottom bar to the floor: it fills the
+     footer, and the bar takes the slack with `margin-top: auto`. Without this
+     the bar would sit directly under the columns and leave dead space below. */
+  .foot__inner {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  /* Four columns. `1.6fr 1fr 1fr 1fr` rather than `repeat(4, 1fr)` because the
+     brand block carries prose and needs the extra measure; the other three are
+     lists of short strings.
+
+     `align-content: center` with the grid as a flex child means the block sits
+     optically centred in the space above the bar rather than jammed to the top
+     of a tall section. */
+  .foot__grid {
+    display: grid;
+    flex: 1;
+    grid-template-columns: 1.6fr 1fr 1fr 1fr;
+    align-content: center;
+    gap: clamp(2rem, calc(0.035 * var(--screen-w)), 4.5rem);
+  }
+
+  .foot__wordmark {
+    font-size: 1.375rem;
+    /* The Navbar's own tracking, so the two wordmarks read as one mark. */
+    letter-spacing: 0.34em;
+    color: var(--color-cream);
+  }
+
+  .foot__tagline {
+    margin-top: 0.75rem;
+    font-size: 1.125rem;
+    color: var(--color-amber);
+  }
+
+  /* The reference cup's line. It has been in `SITE` since the beginning but
+     only ever rendered into the overlay and the hero's screen-reader text, so
+     this is its first appearance on the page proper. */
+  .foot__statement {
+    margin-top: 1rem;
+    /* A readable measure — the block is the widest of the four and full-width
+       prose at this size would run past a comfortable line length. */
+    max-width: 30ch;
+    font-size: var(--text-body);
+    color: var(--section-muted, rgb(254 254 252 / 0.6));
+  }
+
+  /* Column headings. `.label` supplies the size, weight, tracking and
+     uppercase; this adds the colour and the space beneath. */
+  .foot__label {
+    margin-bottom: 1.125rem;
+    color: var(--section-accent, var(--color-amber));
+  }
+
+  /* Hours as a definition list — three terms, three definitions, which is
+     exactly what this data is. Rendered as two paragraphs it would lose the
+     pairing for anyone reading it with a screen reader.
+
+     The rows are `flex` with the two halves pushed apart, so the times form a
+     clean right edge down the column without a table. */
+  .foot__hours {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: var(--text-body);
+  }
+
+  .foot__hours-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .foot__hours dt {
+    color: var(--section-muted, rgb(254 254 252 / 0.6));
+  }
+
+  .foot__hours dd {
+    margin: 0;
+    /* Tabular figures so the times align on their digits rather than their
+       glyph widths — the same reasoning as the gallery captions' numerals. */
+    font-variant-numeric: tabular-nums;
+    color: var(--color-cream);
+    white-space: nowrap;
+  }
+
+  .foot__address,
+  .foot__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-body);
+    line-height: 1.7;
+  }
+
+  /* The gap is small because the links themselves now carry 44px of height —
+     the rhythm comes from the hit areas, not from spacing between them. An
+     8px gap on top of a 44px box read as three loose, unrelated items, and the
+     column ended up taller than the hours beside it for no reason.
+
+     4px is enough to keep adjacent `:focus-visible` outlines from touching. */
+  .foot__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  /* ------------------------------------------------------------------ links
+     Underlined on a dark ground, because colour alone is not a reliable
+     affordance and the muted cream these sit in has no hue to shift.
+
+     The underline is drawn from `currentColor` at reduced alpha and goes to
+     full on hover/focus, which reads as the link "lighting up" without moving
+     anything — no layout shift, no travel.
+
+     `min-height: 2.75rem` is the project's 44px interaction floor, and it has
+     to be on the ANCHOR rather than on the list item around it: measured, the
+     first attempt put the floor on the `<li>`, the anchors stayed 21px tall
+     (a single line of `--text-body`), and the whole column was still the right
+     height — so the defect was invisible to any layout check and only showed
+     up when the hit areas were measured directly.
+
+     `align-items: center` keeps the label optically centred inside that taller
+     box instead of sitting at its top. */
+  .foot__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: var(--section-muted, rgb(254 254 252 / 0.6));
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
+    text-underline-offset: 4px;
+    transition:
+      color 300ms var(--ease-out-soft),
+      text-decoration-color 300ms var(--ease-out-soft);
+  }
+
+  /* The address is one link wrapping three lines, so it needs the block
+     display to keep the spans stacking rather than running together — and it
+     must NOT take the 44px min-height, because it is already 82px tall and
+     the flex centring would fight the line boxes. */
+  .foot__link--block {
+    display: block;
+    min-height: 0;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .foot__link:hover {
+      color: var(--color-cream);
+      text-decoration-color: currentColor;
+    }
+  }
+
+  /* Keyboard parity, outside the hover query so it holds on every device. */
+  .foot__link:focus-visible {
+    color: var(--color-cream);
+    text-decoration-color: currentColor;
+  }
+
+  /* ------------------------------------------------------------- bottom bar
+     A hairline rule, then the legal line, the repeated nav and the back-to-top
+     control on one row. */
+  .foot__bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    /* `margin-top: auto` is what pushes the bar to the floor of the footer. */
+    margin-top: auto;
+    padding-top: 2rem;
+    border-top: 1px solid rgb(254 254 252 / 0.15);
+  }
+
+  .foot__legal {
+    font-size: var(--text-label);
+    letter-spacing: 0.08em;
+    color: var(--section-muted, rgb(254 254 252 / 0.6));
+  }
+
+  .foot__nav-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .foot__nav-link {
+    display: inline-flex;
+    align-items: center;
+    /* The project's 44px interaction floor, without changing how it looks. */
+    min-height: 2.75rem;
+    font-size: var(--text-label);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--section-muted, rgb(254 254 252 / 0.6));
+    transition: color 300ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .foot__nav-link:hover {
+      color: var(--color-cream);
+    }
+  }
+
+  .foot__nav-link:focus-visible {
+    color: var(--color-cream);
+  }
+
+  /* Back to top.
+
+     An anchor to `#home`, not a scroll handler — the root sets
+     `scroll-behavior: smooth`, and the global reduced-motion block already
+     overrides that to `auto !important`, so the preference is honoured without
+     a single line of JavaScript. */
+  .foot__top {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    font-size: var(--text-label);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--section-muted, rgb(254 254 252 / 0.6));
+    transition: color 300ms var(--ease-out-soft);
+  }
+
+  /* The hero's chevron, rotated. Same 15x15 path, pointing the other way, so
+     the two ends of the page share one glyph. */
+  .foot__top-arrow {
+    display: inline-block;
+    line-height: 0;
+    transform: rotate(180deg);
+    transition: transform 300ms var(--ease-out-soft);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .foot__top:hover {
+      color: var(--color-cream);
+    }
+
+    /* Lifts, rather than travelling — the arrow points up, so moving it up is
+       the gesture the label describes. */
+    .foot__top:hover .foot__top-arrow {
+      transform: rotate(180deg) translateY(0.25rem);
+    }
+  }
+
+  .foot__top:focus-visible {
+    color: var(--color-cream);
+  }
+
+  .foot__top:focus-visible .foot__top-arrow {
+    transform: rotate(180deg) translateY(0.25rem);
+  }
+
+  /* Below the desktop range the four columns stop fitting and pair up, then
+     stack. NOT a mobile breakpoint — the project is desktop-only — this is the
+     floor of the supported range, and it exists because four columns of prose
+     inside a 1280 shell would each be ~230px and wrap badly. */
+  @media (max-width: 1023px) {
+    .foot__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 }
